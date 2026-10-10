@@ -319,11 +319,11 @@ RRF 在主服务里融合两路名次。常数 k = 60。融合后的前若干条
 | owner_id | uuid | 外键 users，必填 | |
 | type | text | 必填 | `paper`、`author`、`method`、`dataset`、`metric`、`problem`，即文献、作者、方法、数据集、指标、研究问题 |
 | name | text | 必填 | 展示名，取第一次出现的写法 |
-| merge_key | text | 必填 | 去掉首尾空白、合并连续空白、拉丁字母转小写 |
+| merge_key | text | 必填 | 文献节点为 `paper:` 加资料 ID。其他类型为去掉首尾空白、合并连续空白、拉丁字母转小写后的名称 |
 | document_id | uuid | 外键 documents，`ON DELETE SET NULL` | 仅文献节点，指向对应资料 |
 | created_at | timestamptz | 必填 | |
 
-唯一 `(owner_id, merge_key)`：同一用户内名称相同的实体只有一个，不同用户互不合并。同名但模型给出不同类型时保留已有类型，这一点随 OQ-11 一起确认。
+唯一 `(owner_id, merge_key)`。文献节点的键含资料 ID，因此同一用户下标题相同的两份资料仍各有一个文献节点，`document_id` 各指向自己的资料。作者、方法、数据集、指标、研究问题按规范化名称合并，同一用户内同名只有一个，不同用户不合并。这些类型同名但模型给出的类型不同时，保留已有类型，这一点随 OQ-11 一起确认。文献节点不参与名称合并。
 
 ### kg_relations
 
@@ -369,7 +369,7 @@ RRF 在主服务里融合两路名次。常数 k = 60。融合后的前若干条
 | question | text | 必填 | |
 | scope | jsonb | 必填 | |
 | status | text | 必填 | `running`、`stopped`、`failed`、`completed` |
-| step_limit | integer | 必填，默认 8 | |
+| step_limit | integer | 必填，默认 8 | 含整理回答。动作只发生在更小的序号上，序号等于上限的那一步是整理回答 |
 | stop_requested | boolean | 必填，默认 false | |
 | failed_step | integer | 可空 | |
 | answer | text | 可空 | 校验后的最终回答 |
@@ -674,7 +674,7 @@ docreader 返回的页块只在一次任务的内存里存在。切块提交后�
 | `chunks (document_id, paragraph_index)` | 按顺序读切块 |
 | `kg_evidence (chunk_id)` | 图谱补充和切块修订时找关系 |
 | `kg_relations (owner_id, source_id)`、`kg_relations (owner_id, target_id)` | 一跳查询 |
-| `kg_entities (owner_id, merge_key)` 唯一 | 合并 |
+| `kg_entities (owner_id, merge_key)` 唯一 | 文献节点的键含资料 ID，其余实体按名称合并 |
 | `faq_variants (faq_id)` | FAQ 匹配 |
 | `wiki_pages (kb_id, title)` 唯一 | 主题页同名合并 |
 
