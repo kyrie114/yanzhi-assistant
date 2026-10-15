@@ -1,0 +1,126 @@
+syntax = "proto3";
+
+package docreader.v1;
+
+option go_package = "yanzhi/server/internal/platform/docreader/pb;pb";
+
+// DocReader 把一份资料转成按物理页组织的文本。它不连库、不调模型、不回答问题。
+service DocReader {
+  rpc Parse(stream ParseRequest) returns (stream ParseEvent);
+}
+
+enum SourceType {
+  SOURCE_TYPE_UNSPECIFIED = 0;
+  PDF = 1;
+  DOCX = 2;
+  PPTX = 3;
+  XLSX = 4;
+  CSV = 5;
+  EPUB = 6;
+  HTML = 7;
+  MARKDOWN = 8;
+  TEXT = 9;
+  IMAGE = 10;
+  AUDIO = 11;
+}
+
+message ParseRequest {
+  oneof part {
+    ParseHeader header = 1;
+    bytes data = 2;
+  }
+}
+
+message ParseHeader {
+  string request_id = 1;
+  string document_id = 2;
+  SourceType source_type = 3;
+  string file_name = 4;
+  string source_url = 5;
+  int64 size_bytes = 6;
+  int32 max_pages = 7;
+  bool extract_images = 8;
+  int32 page_image_dpi = 9;
+}
+
+message ParseEvent {
+  oneof event {
+    DocumentInfo info = 1;
+    Page page = 2;
+    ExtractedImage image = 3;
+    TableSchema table = 4;
+    PageImage page_image = 5;
+    ParseError error = 6;
+    ParseDone done = 7;
+  }
+}
+
+message DocumentInfo {
+  int32 page_count = 1;
+  bool has_physical_pages = 2;
+}
+
+message Page {
+  int32 page_no = 1;
+  bool has_text = 2;
+  repeated Block blocks = 3;
+}
+
+message Block {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    HEADING = 1;
+    PARAGRAPH = 2;
+    TABLE = 3;
+    FIGURE = 4;
+    TRANSCRIPT = 5;
+  }
+  Kind kind = 1;
+  string text = 2;
+  repeated TableRow rows = 3;
+}
+
+message TableRow {
+  repeated string cells = 1;
+}
+
+message ExtractedImage {
+  int32 page_no = 1;
+  int32 index = 2;
+  string mime_type = 3;
+  bytes data = 4;
+}
+
+message TableSchema {
+  int32 page_no = 1;
+  string name = 2;
+  repeated Column columns = 3;
+  message Column {
+    string name = 1;
+    string inferred_type = 2;
+  }
+}
+
+message PageImage {
+  int32 page_no = 1;
+  bytes png = 2;
+}
+
+message ParseError {
+  enum Code {
+    CODE_UNSPECIFIED = 0;
+    UNSUPPORTED_FORMAT = 1;
+    CORRUPTED = 2;
+    ENCRYPTED = 3;
+    TOO_MANY_PAGES = 4;
+    TRANSCRIBE_FAILED = 5;
+    INTERNAL = 6;
+  }
+  Code code = 1;
+  string message = 2;
+}
+
+message ParseDone {
+  int32 pages_with_text = 1;
+  int32 pages_without_text = 2;
+}
