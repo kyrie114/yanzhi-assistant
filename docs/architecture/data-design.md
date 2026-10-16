@@ -2,10 +2,10 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 文档版本 | v0.2（草稿） |
-| 日期 | 2026-10-04 |
-| 需求基线 | [requirements.md](../requirements/requirements.md) 1.0 |
-| 修订 | v0.2 按需求 1.0 重做：新增知识库、父块、预生成问法、表格列说明、图谱、深度查阅、Wiki 版本、FAQ 问法、推荐问题、通用任务表、外部检索密钥、来源同步和偏好表；删去邀请码、绑定、项目、任务、评论、通知、Agent 任务和会话分叉列；模型密钥改为 AES-GCM。完整修订记录见 [architecture.md](architecture.md) |
+| 文档版本 | v0.2.2（草稿） |
+| 日期 | 2026-10-11 |
+| 需求基线 | [requirements.md](../requirements/requirements.md) 1.1 |
+| 修订 | v0.2 按需求 1.0 重做。v0.2.2 增加 `page_translations`。完整修订记录见 [architecture.md](architecture.md) |
 | 关联文档 | [architecture.md](architecture.md)、[api-design.md](api-design.md)、[ADR-001.md](ADR-001.md) |
 
 数据库是一个 PostgreSQL，只由 Go 主服务连接；docreader 不连数据库。向量类型由 pgvector 提供。图谱也用普通表，不另部署图数据库（C-02）。时间列都是 `timestamptz`。业务上的「北京时间」在写入前换算，不另存无时区的本地时间。
@@ -40,6 +40,7 @@ erDiagram
   qa_turns ||--o| feedback : rated
   documents ||--o{ notes : summarized
   notes ||--o{ note_versions : versions
+  documents ||--o{ page_translations : translates
   knowledge_bases ||--o{ faqs : keeps
   faqs ||--o{ faq_variants : phrases
   knowledge_bases ||--o{ wiki_pages : has
@@ -295,6 +296,10 @@ RRF 在主服务里融合两路名次。常数 k = 60。融合后的前若干条
 
 `note_versions(id, note_id, version_no, body, created_at)`。`body` 是五个小节的 JSON。每个小节含 `citations: [{chunk_id, page_start}]`。写入前丢掉对不上该资料切块的标记。重新生成并保存增加 `version_no`，不覆盖旧行。
 
+### page_translations
+
+`page_translations(id, document_id, owner_id, page_no, source_sha256, translation, created_at)`。`page_no` 从 1 开始。唯一 `(document_id, page_no)`。`source_sha256` 是该页切块当前文本按段落序号拼接后的 SHA-256。只存译文和哈希，不另存一份页原文。没有向量列。切块修订使该页哈希变化时删除这一行。删除资料时级联删除。
+
 ### faqs 与 faq_variants
 
 `faqs(id, owner_id, kb_id, question, answer, question_embedding, embedding_generation, created_at, updated_at)`。
@@ -439,7 +444,7 @@ RRF 在主服务里融合两路名次。常数 k = 60。融合后的前若干条
 | id | uuid | 主键 | |
 | request_id | uuid | 必填 | 后台任务用创建它的请求的 request_id |
 | user_id | uuid | 可空 | 系统任务可空 |
-| kind | text | 必填 | `qa`、`smalltalk`、`rewrite`、`embed`、`rerank`、`vision_ocr`、`vision_caption`、`question_gen`、`graph_extract`、`suggest`、`notes`、`research`、`wiki` |
+| kind | text | 必填 | `qa`、`smalltalk`、`rewrite`、`embed`、`rerank`、`vision_ocr`、`vision_caption`、`question_gen`、`graph_extract`、`suggest`、`notes`、`research`、`wiki`、`translate_page` |
 | model | text | 必填 | |
 | elapsed_ms | integer | 必填 | |
 | prompt_tokens | integer | 必填 | |
@@ -528,7 +533,7 @@ RETURNING *;
 
 1. 将 `cancel_requested` 置位并提交，等待 worker 退出或确认尚未认领。
 2. 删除文件卷中的对象。
-3. 删除 `documents` 行。父块、切块、问法、词项、修订、表格列说明、标签关联、任务、证据、未入库引用随外键级联。
+3. 删除 `documents` 行。父块、切块、问法、词项、修订、表格列说明、标签关联、任务、证据、未入库引用、页译文随外键级联。
 4. `qa_citations.chunk_id`、`research_citations.chunk_id` 被置空。`users.storage_bytes` 减去 `size_bytes`。
 5. `term_stats.df` 按被删词项减少。
 6. 图谱清理：删除没有剩余证据的 `kg_relations`；指向被删资料文献节点的 `cites` 关系删除，被引题名写回引用方的 `kg_unresolved_refs`；删除不再连接任何关系、且 `document_id` 不指向仍存在资料的实体，包括被删资料自己的文献节点。

@@ -2,10 +2,10 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 文档版本 | v0.2（草稿） |
-| 日期 | 2026-10-04 |
-| 需求基线 | [requirements.md](../requirements/requirements.md) 1.0 |
-| 修订 | v0.2 按需求 1.0 重做：接口由 Go 主服务提供；新增知识库、图谱、深度查阅、Wiki 编辑与版本、FAQ 问法、推荐问题、外部检索、来源同步、偏好接口和 docreader 的 gRPC 契约；删去邀请、绑定、导师看板、项目任务、通知、Related Work 和会话分叉接口。完整修订记录见 [architecture.md](architecture.md) |
+| 文档版本 | v0.2.2（草稿） |
+| 日期 | 2026-10-11 |
+| 需求基线 | [requirements.md](../requirements/requirements.md) 1.1 |
+| 修订 | v0.2 按需求 1.0 重做。v0.2.2 按需求 1.1 增加按页对照阅读接口。完整修订记录见 [architecture.md](architecture.md) |
 | 关联文档 | [architecture.md](architecture.md)、[data-design.md](data-design.md)、[module-design.md](module-design.md) |
 
 ## 1 约定
@@ -52,9 +52,9 @@
 
 判定顺序与验收标准开头的总则相同：401，然后 403，然后 404。策略模块返回这三类结果，处理器只映射状态码。
 
-未验证邮箱的用户可以登录。FR-24 的限制打开后，调用上传、导入、添加订阅源、提问和深度查阅时返回 403，`code` 为 `EMAIL_UNVERIFIED`，`message` 为「请先完成邮箱验证」。第一切片关闭该限制，见 [architecture.md](architecture.md) 第 11 节。
+未验证邮箱的用户可以登录。FR-24 的限制打开后，调用上传、导入、添加订阅源、提问、深度查阅和请求页译文时返回 403，`code` 为 `EMAIL_UNVERIFIED`，`message` 为「请先完成邮箱验证」。第一切片关闭该限制，见 [architecture.md](architecture.md) 第 11 节。
 
-普通用户调用 `/admin/*` 返回 403。系统管理员打开知识库、资料、切块、笔记、会话、标签、图谱、Wiki、FAQ、深度查阅和偏好中的某一项，或请求原文，返回 404，响应不含标题、正文或节点名称。`GET /graph` 也是 404，不是空图。`GET /kbs`、`GET /documents`、`GET /tags`、`GET /qa/sessions` 只列出调用者本人的对象，管理员得到 200 和空列表。
+普通用户调用 `/admin/*` 返回 403。系统管理员打开知识库、资料、切块、笔记、页译文、会话、标签、图谱、Wiki、FAQ、深度查阅和偏好中的某一项，或请求原文，返回 404，响应不含标题、正文或节点名称。`GET /graph` 也是 404，不是空图。`GET /kbs`、`GET /documents`、`GET /tags`、`GET /qa/sessions` 只列出调用者本人的对象，管理员得到 200 和空列表。
 
 外部检索密钥只能调用 `/external/search`。用它调用其他接口，或密钥已作废，返回 401。
 
@@ -79,6 +79,7 @@
 | `FILE_ENCRYPTED` | 422 | 文件已加密，无法解析 |
 | `TOO_MANY_PAGES` | 422 | 单个文件不能超过 300 页 |
 | `STORAGE_QUOTA_EXCEEDED` | 422 | 存储空间不足（已用 {used}/{limit} GB） |
+| `PAGE_OUT_OF_RANGE` | 422 | 没有这一页 |
 | `VALIDATION_ERROR` | 422 | 字段级说明放在 `details` |
 | `FILE_TOO_LARGE` | 413 | 文件大小不能超过 50 MB |
 | `UNSUPPORTED_MEDIA` | 415 | 此接口不接受该文件类型 |
@@ -152,6 +153,8 @@
 | POST | `/documents/{id}/notes` | 所有者 | 201 | FR-20 |
 | GET | `/documents/{id}/notes` | 所有者 | 200 | FR-20 |
 | GET | `/notes/{id}/versions` | 所有者 | 200 | FR-20 |
+| GET | `/documents/{id}/pages/{page}` | 所有者 | 200 | FR-29 |
+| POST | `/documents/{id}/pages/{page}/translation` | 所有者 | 200 SSE | FR-29 |
 | POST | `/citations/exports` | 注册用户 | 200 | FR-19 |
 | POST | `/kbs/{kb_id}/wiki/generations` | 所有者 | 201 | FR-16 |
 | GET | `/kbs/{kb_id}/wiki/generations/{id}` | 所有者 | 200 | FR-16 |
@@ -403,7 +406,7 @@ GET 返回的 `api_key` 形如 `****abcd`，只有末 4 位。数据库里是 AE
 
 `elapsed_ms` 一并返回。
 
-未配置对话模型时，提问、生成要点、深度查阅和 Wiki 生成返回 409，`MODEL_NOT_CONFIGURED`，不返回 500。
+未配置对话模型时，提问、生成要点、深度查阅、对照阅读和 Wiki 生成返回 409，`MODEL_NOT_CONFIGURED`，不返回 500。
 
 ## 9 问答
 
@@ -446,6 +449,35 @@ GET 返回的 `api_key` 形如 `****abcd`，只有末 4 位。数据库里是 AE
 保存：`POST /documents/{id}/notes`，正文为刚才的草稿。再次生成并保存产生新版本，旧版本仍在 `GET /notes/{id}/versions`。
 
 超长资料由服务端分段处理后再返回，接口形状不变，调用方看不到上下文超长错误。
+
+## 10.1 按页对照阅读
+
+`page` 是从 1 开始的物理页码。没有 PDF 页码的资料只有第 1 页。页码超出该资料的页数返回 422，`code` 为 `PAGE_OUT_OF_RANGE`，`message` 为「没有这一页」。
+
+### GET `/documents/{id}/pages/{page}`
+
+资料不是「已完成」时返回 409，`DOCUMENT_NOT_READY`，提示资料尚未完成。其他用户和管理员返回 404。所有者返回：
+
+```json
+{
+  "page": 4,
+  "page_count": 20,
+  "has_original_file": true,
+  "source_text": "该页切块按段落序号拼接",
+  "translation": "已缓存的简体中文译文，没有则为 null",
+  "cached": true
+}
+```
+
+`source_text` 只含起始物理页等于 `page` 的切块。没有此类切块时 `source_text` 为空字符串，`translation` 为 null，`cached` 为 false。左侧原文 PDF 仍走 `GET /documents/{id}/file`，由浏览器渲染当前页。
+
+### POST `/documents/{id}/pages/{page}/translation`
+
+`Accept` 为 `text/event-stream`。资料未完成返回 409，`DOCUMENT_NOT_READY`。该页没有可翻译切块时返回 200 JSON，`message` 为「本页没有可翻译的正文」，不调用模型。尚未配置对话模型时返回 409，`MODEL_NOT_CONFIGURED`，不返回 500。
+
+源文本哈希与已存译文一致时，发送一条 `cached` 事件，`text` 为全文，然后 `done`，不再调用模型。否则发送 `token` 增量；生成结束后写入页译文，再发送 `done`。正文中的指令不改变译文规则，响应不含系统提示词。命中缓存或生成失败都不把译文写入切块或向量。
+
+## 10.2 深度查阅
 
 ### POST `/research-tasks`
 

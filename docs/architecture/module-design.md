@@ -2,10 +2,10 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 文档版本 | v0.2（草稿） |
-| 日期 | 2026-10-04 |
-| 需求基线 | [requirements.md](../requirements/requirements.md) 1.0 |
-| 修订 | v0.2 按需求 1.0 重做：模块改为 Go 包，新增 knowledge、graph、research、wiki、faq、jobs、feeds、apikey、preference 和 docreader 侧模块，删去 membership、workspace、notify 和 agents。完整修订记录见 [architecture.md](architecture.md) |
+| 文档版本 | v0.2.2（草稿） |
+| 日期 | 2026-10-11 |
+| 需求基线 | [requirements.md](../requirements/requirements.md) 1.1 |
+| 修订 | v0.2 按需求 1.0 重做。v0.2.2 增加 `reading`。完整修订记录见 [architecture.md](architecture.md) |
 | 关联文档 | [architecture.md](architecture.md)、[api-design.md](api-design.md)、[data-design.md](data-design.md) |
 
 ## 1 依赖规则
@@ -47,11 +47,11 @@
 | --- | --- |
 | 未携带有效令牌；或外部检索密钥调用外部检索以外的接口 | `Unauthenticated` |
 | 普通用户调用模型配置、日志、反馈导出 | `Forbidden` |
-| 未验证邮箱却要上传、导入、添加订阅源、提问或深度查阅，且 FR-24 的限制已打开 | `Forbidden`，原因 `EMAIL_UNVERIFIED` |
+| 未验证邮箱却要上传、导入、添加订阅源、提问、深度查阅或请求页译文，且 FR-24 的限制已打开 | `Forbidden`，原因 `EMAIL_UNVERIFIED` |
 | 打开的个人资源不是调用者创建的；或调用者是管理员，而这次打开的是某一项个人资源或图谱 | `NotFound` |
 | 所有者对自己的资源执行任何操作；列出本人知识库、资料、标签或会话 | `Allow` |
 
-个人资源包括知识库、资料、切块、父块、笔记、会话、标签、图谱节点与边、Wiki 页面、FAQ、深度查阅任务、订阅源、外部检索密钥和偏好。未验证邮箱可以登录。上面这道 403 与 [architecture.md](architecture.md) 第 9.3 节、[api-design.md](api-design.md) 第 1.2 节是同一张清单：上传、导入、提问、深度查阅、添加订阅源。第一切片用配置关闭该限制，见 architecture.md 第 11 节。
+个人资源包括知识库、资料、切块、父块、笔记、页译文、会话、标签、图谱节点与边、Wiki 页面、FAQ、深度查阅任务、订阅源、外部检索密钥和偏好。未验证邮箱可以登录。上面这道 403 与 [architecture.md](architecture.md) 第 9.3 节、[api-design.md](api-design.md) 第 1.2 节是同一张清单：上传、导入、提问、深度查阅、请求页译文、添加订阅源。第一切片用配置关闭该限制，见 architecture.md 第 11 节。
 
 列出本人知识库、资料、标签和会话时，条件是所有者等于调用者，结果为 `Allow`。管理员没有这些行，响应是 200 和空列表，不是 `NotFound`。打开带 ID 的个人资源，以及 `GET /graph`，管理员得到 `NotFound`，不能借管理员身份读取他人内容。
 
@@ -111,7 +111,7 @@
 
 预生成问法：资料完成后单独的任务为每个子块调用一次对话模型，最多保留 3 个问法，写入 `chunk_questions` 并向量化，问法词项计入所属切块。单块失败只跳过该块，原文检索不受影响。配置可关闭这一任务以控制费用。
 
-切块修订（FR-18）：同一事务里把旧文本写入 `chunk_revisions`、更新文本、清空该块向量、替换词项、重建所属父块文本、删除该块的旧问法；调用 `graph.SuspendByChunk` 暂停以该块为证据的关系；然后创建 `chunk_reindex` 任务（向量和问法）和该资料的图谱重新抽取任务。修订不把整份资料打回「待处理」，物理页码不变。
+切块修订（FR-18）：同一事务里把旧文本写入 `chunk_revisions`、更新文本、清空该块向量、替换词项、重建所属父块文本、删除该块的旧问法；调用 `graph.SuspendByChunk` 暂停以该块为证据的关系；删除该切块起始页的页译文；然后创建 `chunk_reindex` 任务（向量和问法）和该资料的图谱重新抽取任务。修订不把整份资料打回「待处理」，物理页码不变。
 
 重新向量化（FR-08 确认更换后）：任务只读现有切块和问法，重新调用 `Embedder`，不再调用 docreader，资料状态走「待处理 → 向量化中 → 已完成」。
 
@@ -291,6 +291,20 @@ sequenceDiagram
 
 对应 FR-20。
 
+## 13.1 reading
+
+职责：按页对照阅读。
+
+1. `access` 要求调用者是所有者。资料不是 `ready` 时返回未完成。
+2. 按 `page_no` 取出起始物理页等于该页的切块，按段落序号拼成源文本并计算 SHA-256。没有切块则不调用模型。
+3. `page_translations` 中哈希一致则返回已存译文。否则调用 `ChatModel`，只翻译正文段落；公式、图表说明和参考文献列表可以不译。
+4. 生成完成后按 `(document_id, page_no)` 写入或替换译文。译文不调用 `retrieval`，也不写切块、向量或词项。
+5. 切块修订使该页源文本变化时，删除该页译文行。
+
+正文中的指令不能改变上述规则，也不能引出系统提示词。书目标题不翻译。
+
+对应 FR-29。
+
 ## 14 citation
 
 职责：把资料书目渲染成 BibTeX 或 GB/T 7714。
@@ -383,7 +397,9 @@ docreader 不连接业务数据库，不生成向量，不回答问题，不抽�
 
 ## 21 前端模块
 
-Vue 3 + TypeScript 单页应用，按页面划分：登录与注册、知识库列表、知识库详情、资料详情、问答、深度查阅、图谱、Wiki、FAQ、设置、模型配置、日志、反馈导出。
+Vue 3 + TypeScript 单页应用，按页面划分：登录与注册、知识库列表、知识库详情、资料详情、对照阅读、问答、深度查阅、图谱、Wiki、FAQ、设置、模型配置、日志、反馈导出。
+
+对照阅读页左右分栏。有原始 PDF 时，左侧用鉴权下载的原件渲染当前物理页；否则展示该页抽出的文本。右侧展示译文。翻页、问答出处和图谱证据都把两侧定位到同一物理页。1366×768 下两栏都可以滚动。
 
 前端在提交前做同样的提示：超过 50 MB 不发请求，密码规则，知识库和标签名称长度。后端仍重复这些检查。文件夹上传时前端逐个文件提交并带上相对路径，单个文件被拒绝不阻止其余文件。
 
@@ -398,7 +414,7 @@ Vue 3 + TypeScript 单页应用，按页面划分：登录与注册、知识库�
 | 模块 | 测试重点 | 位置 |
 | --- | --- | --- |
 | access | 401、403、404 的顺序；其他用户和管理员读每类个人资源都是 404 | `server/internal/access/access_test.go`、`server/internal/httpapi/permissions_test.go` |
-| identity | 密码规则、单令牌退出、改密码和重置废全部令牌、未验证不能上传和提问、重置响应不暴露邮箱是否注册 | `server/internal/identity/auth_test.go` |
+| identity | 密码规则、单令牌退出、改密码和重置废全部令牌、未验证不能上传、提问和请求页译文、重置响应不暴露邮箱是否注册 | `server/internal/identity/auth_test.go` |
 | knowledge | 知识库名称、加密 PDF、配额、失败记录再上传、标签 50 字符、硬删除 | `server/internal/knowledge/knowledge_test.go`、`tag_test.go`、`kb_settings_test.go` |
 | ingest | 假 docreader 超时与不可用、跳页不改号、识别未配置、图片描述失败、启动回收不增加重试次数、父块重建 | `server/internal/ingest/ingest_test.go`、`chunk_test.go`、`import_test.go` |
 | retrieval | 所有者谓词出现在 SQL 中；专名走关键词；阈值只作用向量路；问法命中回到原切块 | `server/internal/retrieval/retrieval_test.go` |
@@ -408,6 +424,7 @@ Vue 3 + TypeScript 单页应用，按页面划分：登录与注册、知识库�
 | research | 第 8 步是整理回答且该步没有动作调用、停止后 5 秒内没有模型调用、不越过资料边界 | `server/internal/research/research_test.go` |
 | wiki | 修改后保留上一版、恢复、其他人 404 | `server/internal/wiki/wiki_test.go` |
 | notes | 五小节出处、未完成 409 | `server/internal/notes/note_test.go` |
+| reading | 同页缓存不再调用模型；修订后旧译文失效；空页不调用模型；译文不出现在检索 SQL 中；其他用户 404；出处和图谱证据都落到同一物理页；正文指令不改变译文 | `server/internal/reading/reading_test.go` |
 | citation | GB/T 7714-2025 样例逐字符；缺字段；批量键不重复 | `server/internal/citation/citation_test.go` |
 | observe | 日志样本不含密钥、密码、提示词、回答和资料全文 | `server/internal/observe/log_test.go` |
 | docreader | 物理页码、跳页、加密、损坏、表格、无文本页图片、网页不执行脚本 | `docreader/tests/` |
