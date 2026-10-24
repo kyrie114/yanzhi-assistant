@@ -1,16 +1,14 @@
 package ingest
 
-import "yanzhi/server/internal/textutil"
+import (
+	"yanzhi/server/internal/platform/docreader"
+	"yanzhi/server/internal/textutil"
+)
 
-type Block struct {
-	Kind string
-	Text string
-}
+// Page 和 Block 的字段与 docreader 交回的一致，这里用别名避免两边各写一份。
+type Block = docreader.Block
 
-type Page struct {
-	PageNo int
-	Blocks []Block
-}
+type Page = docreader.Page
 
 type ChunkDraft struct {
 	Text           string
