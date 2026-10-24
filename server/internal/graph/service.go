@@ -285,7 +285,7 @@ func (s Service) Query(ctx context.Context, owner string, f Filter) (View, error
 		return View{}, err
 	}
 	if docs == nil {
-		docs = []pgtypeUUID{}
+		docs = []string{}
 	}
 	view := View{Nodes: []Node{}, Edges: []Edge{}}
 	if len(docs) == 0 && (f.KBID != "" || len(f.DocumentIDs) > 0 || len(f.TagIDs) > 0) {

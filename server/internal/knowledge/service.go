@@ -209,8 +209,15 @@ func (s Service) Upload(ctx context.Context, owner, kbID string, meta UploadMeta
 	info := pdfcheck.Inspect(data)
 	ext := strings.ToLower(meta.FileName)
 	isPDF := info.IsPDF && strings.HasSuffix(ext, ".pdf")
-	var existing *Existing
 	sum := cryptobox.SHA256Hex(data)
+	// 幂等键先于「同哈希已存在」判定：网络重试应复用第一次的 201，而不是变成 409。
+	hash := cryptobox.SHA256Hex(append(append([]byte(sum), []byte(kbID+title+meta.Venue+meta.RelativePath)...), mustJSON(meta.Authors)...))
+	if meta.IdempotencyKey != "" {
+		if replay, ok, err := s.replay(ctx, owner, meta.IdempotencyKey, hash); err != nil || ok {
+			return replay, err
+		}
+	}
+	var existing *Existing
 	var ex Existing
 	var key string
 	err = s.Pool.QueryRow(ctx, `
@@ -227,12 +234,6 @@ func (s Service) Upload(ctx context.Context, owner, kbID string, meta UploadMeta
 	})
 	if outcome.Err != nil {
 		return UploadResult{}, outcome.Err
-	}
-	hash := cryptobox.SHA256Hex(append(append([]byte(sum), []byte(kbID+title+meta.Venue+meta.RelativePath)...), mustJSON(meta.Authors)...))
-	if meta.IdempotencyKey != "" {
-		if replay, ok, err := s.replay(ctx, owner, meta.IdempotencyKey, hash); err != nil || ok {
-			return replay, err
-		}
 	}
 	req := meta.RequestID
 	if _, ok := db.UUID(req); !ok {

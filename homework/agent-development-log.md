@@ -13,6 +13,9 @@
 
 轨迹图见 [trajectory.md](trajectory.md) 和 [trajectory.png](trajectory.png)。
 
+> 2026-10-24 补记：仓库后来按架构文档重构，Go 模块名改为 `yanzhi/server`，Go 版本升到 1.25，账户改由 `server/internal/identity`（PostgreSQL）实现，原来的 `server/internal/account` 内存切片已删除。第 1 至 8 节保留 FR-01 当时的记录，第 9 节记录把主服务真正跑起来这一轮。
+
+
 ## 1 目标
 
 在还没有业务代码的仓库里，完成一条可以从验收标准上判定对错的功能。完成标准有三条：代码提交进 Git，测试随代码一起提交，测试在本地通过。
@@ -115,3 +118,54 @@ go vet ./...
 - 资料上传和真实的资料列表。`GET /documents` 只有鉴权后的空列表。
 - 前端注册页和登录页。
 - AC-01-08 的 5 分钟压测。
+
+## 9 后续：让主服务真正能启动（2026-10-24）
+
+### 9.1 起因
+
+复核时发现仓库根本编译不过，`go build ./...` 有三处失败：
+
+1. `platform/docreader` 为了复用 `ingest.Page` 反向 import 了 `ingest`，而 `ingest` 又 import 了 docreader，形成 import cycle。
+2. `graph/service.go` 有一处 `[]pgtypeUUID{}` 的笔误，类型没有定义。
+3. `qa` 包里 `itoa` 声明了两次，`finishSmall` 的调用少传一个 `send` 参数。
+
+### 9.2 这一轮做了什么
+
+- 修编译：页模型放到 `platform/docreader`，`ingest` 用类型别名复用；graph 改成 `[]string{}`；qa 删除重复的 `itoa`，补上 `finishSmall` 的 `send` 参数。
+- 组合根：新增 `cmd/server`。连库、执行 `migrations/`、启动时调用 `jobs.Recover` 把上次中断的任务标为失败，然后装配 identity、knowledge、graph、qa、provider、suggest 和文件存储。
+- 换账户实现：HTTP 账户路由改用 `identity`（PostgreSQL + JWT），删除 `internal/account` 这份内存实现，FR-01 只保留一套代码。
+- 挂业务路由：账户、`/me`、知识库、资料上传/列表/详情/删除/原文/重试/入库进度、切块、标签、图谱、问答会话与 `POST /qa/sessions/{id}/turns` 的 SSE、模型配置与连接测试、推荐问题、`/healthz`。
+- worker：`ingest`、`reembed` 交给 `ingest.Runner`，`graph_extract` 交给 `graph.Service.Extract`，数量由 `INGEST_WORKERS`、`GRAPH_WORKERS` 控制；收到 SIGINT/SIGTERM 先停 HTTP 再等 worker 退出。
+- 修了一处顺序问题：同一 `Idempotency-Key` 的重传原来会先命中「同 SHA-256 已存在」而返回 409，现在先查幂等记录，重试复用第一次的 201。
+
+### 9.3 测试
+
+新增 `server/internal/integration`，只在设置 `TEST_DATABASE_URL` 时运行，未设置时整包跳过：
+
+- 账户：注册、重复邮箱、弱密码、登录、退出只废当前令牌、改密码废全部令牌。
+- 知识库：建库、上传最小 PDF、写入 ingest 任务、重复上传 409、幂等重传复用、列表、原文下载、其他用户 404、删除。
+- 问答：直接写库造已完成资料与可被关键词命中的切块，用 httptest 冒充 OpenAI 兼容服务，断言 SSE 的 `token`、`citations`、`done`，以及落库的出处和拒答。
+- AC-01-01 至 AC-01-07 的接口级同名测试，HTTP 走真实路由。
+
+本机验证命令与结果（在 `server/` 下）：
+
+```text
+go build ./...              # 0
+go vet ./...                # 0
+go test ./...               # ok（集成测试跳过）
+TEST_DATABASE_URL=... go test ./internal/integration   # 14 个测试通过
+```
+
+测试库是 PostgreSQL 16 + pgvector 0.8.6（conda-forge 装的独立实例，端口 55432）。本机 Docker 起不来，因为 WSL2 没有安装，所以没有用 testcontainers。
+
+### 9.4 这一轮仍然没做
+
+- docreader 的 Python 服务。上传后 worker 会实际领取任务，取文件、调解析，拿不到 docreader 就把资料标成失败，原因「文档解析服务暂不可用」。这一步已在本地跑通。
+- 前端。
+- FR-10、FR-11、FR-14 至 FR-23、FR-25 至 FR-29。
+- AC-01-08 压测和 NFR 里的性能、部署检查。
+- 推荐问题只有内存缓存，没有接生成器。
+
+### 9.5 提交
+
+改动在 `feat/server-runtime` 分支（`git worktree`），完成并验证后合并回 `main`。需求跟踪矩阵同步更新到 1.2。

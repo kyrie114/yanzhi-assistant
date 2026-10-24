@@ -294,7 +294,7 @@ func (s *Service) Ask(ctx context.Context, in AskInput, start func() error, emit
 func (s *Service) smalltalk(ctx context.Context, in AskInput, title, question string, emit func(string, any) error) error {
 	remote, err := s.Models.Load(ctx, "chat")
 	if err != nil {
-		return s.finishSmall(ctx, in, title, question, "你好，我是研智助手。你可以就已完成的资料向我提问。", emit)
+		return s.finishSmall(ctx, in, title, question, "你好，我是研智助手。你可以就已完成的资料向我提问。", true, emit)
 	}
 	callCtx, cancel := context.WithTimeout(ctx, s.timeout())
 	defer cancel()
@@ -310,9 +310,9 @@ func (s *Service) smalltalk(ctx context.Context, in AskInput, title, question st
 		return emit("error", map[string]string{"code": "CANCELLED", "message": "已停止生成", "request_id": in.RequestID})
 	}
 	if err != nil || strings.TrimSpace(b.String()) == "" {
-		return s.finishSmall(ctx, in, title, question, "你好，我是研智助手。你可以就已完成的资料向我提问。", emit)
+		return s.finishSmall(ctx, in, title, question, "你好，我是研智助手。你可以就已完成的资料向我提问。", true, emit)
 	}
-	return s.finishSmall(ctx, in, title, question, strings.TrimSpace(b.String()), emit)
+	return s.finishSmall(ctx, in, title, question, strings.TrimSpace(b.String()), true, emit)
 }
 
 var errStop = errors.New("stop")
@@ -665,18 +665,4 @@ func uuidArg(ids []string) []pgtype.UUID {
 		return []pgtype.UUID{}
 	}
 	return out
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var b [12]byte
-	i := len(b)
-	for n > 0 {
-		i--
-		b[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(b[i:])
 }
