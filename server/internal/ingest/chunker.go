@@ -1,16 +1,13 @@
 package ingest
 
-import "yanzhi/server/internal/textutil"
+import (
+	"yanzhi/server/internal/platform/docreader"
+	"yanzhi/server/internal/textutil"
+)
 
-type Block struct {
-	Kind string
-	Text string
-}
-
-type Page struct {
-	PageNo int
-	Blocks []Block
-}
+// Aliases preserve the chunker API while the parser owns its transport types.
+type Block = docreader.Block
+type Page = docreader.Page
 
 type ChunkDraft struct {
 	Text           string
