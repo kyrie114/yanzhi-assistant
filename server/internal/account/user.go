@@ -16,8 +16,10 @@ type User struct {
 	Role                string
 	EmailVerifiedAt     *time.Time
 	TokensInvalidBefore *time.Time
-	StorageBytes        int64
-	CreatedAt           time.Time
+	// SessionVersion disambiguates password rotations within one JWT second.
+	SessionVersion uint64
+	StorageBytes   int64
+	CreatedAt      time.Time
 }
 
 // PublicUser 是注册和 GET /me 返回的公开信息，不含密码哈希和令牌。
