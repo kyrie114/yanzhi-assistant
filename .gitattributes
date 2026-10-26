@@ -1,0 +1,5 @@
+# Preserve exact test-process output bytes; JSON/TXT provide readable copies.
+homework/evidence/*.stdout binary
+homework/trajectory.svg text eol=lf
+homework/render_trajectory.py text eol=lf
+homework/evidence/trajectory-events.json text eol=lf
