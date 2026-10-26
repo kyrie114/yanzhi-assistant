@@ -15,7 +15,8 @@ import (
 const tokenTTL = 2 * time.Hour
 
 type tokenClaims struct {
-	Role string `json:"role"`
+	Role           string `json:"role"`
+	SessionVersion uint64 `json:"sv"`
 	jwt.RegisteredClaims
 }
 
@@ -129,8 +130,8 @@ func (s *Service) Logout(raw string) error {
 	return s.store.Revoke(caller.JTI, caller.User.ID, caller.ExpiresAt)
 }
 
-// ChangePassword 校验旧密码后更新哈希，并把 tokens_invalid_before 写成当前秒。
-// 不逐枚作废令牌。旧密码错误或新密码不合规时不写哈希。
+// ChangePassword 校验旧密码后原子更新哈希、会话版本和 tokens_invalid_before。
+// 会话版本使同一秒内签发的旧令牌也立即失效；拒绝请求不修改账户。
 func (s *Service) ChangePassword(raw, oldPassword, newPassword string) error {
 	caller, err := s.Authenticate(raw)
 	if err != nil {
@@ -147,10 +148,10 @@ func (s *Service) ChangePassword(raw, oldPassword, newPassword string) error {
 		return err
 	}
 	invalidBefore := s.clock.Now().UTC().Truncate(time.Second)
-	return s.store.UpdatePassword(caller.User.ID, string(next), invalidBefore)
+	return s.store.UpdatePassword(caller.User.ID, caller.User.PasswordHash, string(next), invalidBefore)
 }
 
-// Authenticate 的校验顺序：签名和 exp，然后 jti 是否已退出，然后 iat 是否早于 tokens_invalid_before。
+// Authenticate 校验签名、exp、jti，再核对会话版本和 tokens_invalid_before。
 func (s *Service) Authenticate(raw string) (Caller, error) {
 	claims, err := s.parse(raw)
 	if err != nil {
@@ -163,6 +164,9 @@ func (s *Service) Authenticate(raw string) (Caller, error) {
 	if !ok || claims.IssuedAt == nil || claims.ExpiresAt == nil {
 		return Caller{}, ErrUnauthenticated
 	}
+	if claims.SessionVersion != user.SessionVersion {
+		return Caller{}, ErrUnauthenticated
+	}
 	if user.TokensInvalidBefore != nil && claims.IssuedAt.Time.Before(*user.TokensInvalidBefore) {
 		return Caller{}, ErrUnauthenticated
 	}
@@ -172,7 +176,8 @@ func (s *Service) Authenticate(raw string) (Caller, error) {
 func (s *Service) sign(user User) (string, error) {
 	now := s.clock.Now().UTC().Truncate(time.Second)
 	claims := tokenClaims{
-		Role: user.Role,
+		Role:           user.Role,
+		SessionVersion: user.SessionVersion,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   user.ID,
 			ID:        newUUID(),
