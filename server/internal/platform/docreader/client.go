@@ -12,7 +12,6 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"yanzhi/server/internal/apperr"
-	"yanzhi/server/internal/ingest"
 	pb "yanzhi/server/internal/platform/docreader/pb"
 )
 
@@ -29,7 +28,7 @@ func New(addr, token string, timeout time.Duration) *Client {
 type Result struct {
 	PageCount         int
 	HasPhysicalPages  bool
-	Pages             []ingest.Page
+	Pages             []Page
 	Skipped           []int
 	ErrCode           string
 }
@@ -90,7 +89,7 @@ func (c *Client) ParsePDF(ctx context.Context, documentID, requestID string, dat
 			result.HasPhysicalPages = info.GetHasPhysicalPages()
 		}
 		if page := ev.GetPage(); page != nil {
-			p := ingest.Page{PageNo: int(page.GetPageNo())}
+			p := Page{PageNo: int(page.GetPageNo())}
 			if page.GetHasText() {
 				for _, b := range page.GetBlocks() {
 					kind := "paragraph"
@@ -102,7 +101,7 @@ func (c *Client) ParsePDF(ctx context.Context, documentID, requestID string, dat
 					case pb.Block_FIGURE:
 						kind = "figure"
 					}
-					p.Blocks = append(p.Blocks, ingest.Block{Kind: kind, Text: b.GetText()})
+					p.Blocks = append(p.Blocks, Block{Kind: kind, Text: b.GetText()})
 				}
 			} else {
 				result.Skipped = append(result.Skipped, int(page.GetPageNo()))
