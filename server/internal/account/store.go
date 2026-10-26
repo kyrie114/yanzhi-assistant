@@ -59,14 +59,17 @@ func (m *MemoryStore) FindByID(id string) (User, bool) {
 	return copyUser(user), true
 }
 
-func (m *MemoryStore) UpdatePassword(id, hash string, invalidBefore time.Time) error {
+// UpdatePassword uses the previously verified hash as a compare-and-swap guard.
+// A delayed request cannot overwrite a password already changed by another one.
+func (m *MemoryStore) UpdatePassword(id, expectedHash, hash string, invalidBefore time.Time) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	user, ok := m.byID[id]
-	if !ok {
+	if !ok || user.PasswordHash != expectedHash {
 		return ErrUnauthenticated
 	}
 	user.PasswordHash = hash
+	user.SessionVersion++
 	t := invalidBefore
 	user.TokensInvalidBefore = &t
 	m.byID[id] = user
