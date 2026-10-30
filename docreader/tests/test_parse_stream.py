@@ -6,7 +6,7 @@ import pytest
 from docreader.pb import docreader_pb2 as pb
 from docreader.pb import docreader_pb2_grpc as pb_grpc
 from docreader.server import DocReaderServicer
-from test_pdf import pdf_bytes
+from test_pdf import pdf_bytes, surrogate_pdf
 
 
 def _requests(data: bytes):
@@ -67,6 +67,26 @@ def test_text_pdf_keeps_physical_pages(stub):
     assert len(events[2].page.blocks) == 0
     assert events[3].page.blocks[0].text == "Beta"
     assert list(temp.iterdir()) == []
+
+
+def test_unreadable_and_surrogate_finish_ok_as_corrupted(stub):
+    client, temp = stub
+    base = pdf_bytes(["Alpha"])
+    samples = (
+        base.replace(b"/Length ", b"/Filter /NotARealFilter /Length ", 1),
+        surrogate_pdf(),
+    )
+    for data in samples:
+        call = client.Parse(
+            _requests(data),
+            metadata=(("x-docreader-token", "token"),),
+            timeout=5,
+        )
+        events = list(call)
+        assert call.code() == grpc.StatusCode.OK
+        assert [event.WhichOneof("event") for event in events] == ["error"]
+        assert events[0].error.code == pb.ParseError.CORRUPTED
+        assert list(temp.iterdir()) == []
 
 
 def test_corrupt_stream_is_ok_with_one_corrupted_event(stub):

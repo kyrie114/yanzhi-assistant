@@ -4,9 +4,9 @@ from io import BytesIO
 from typing import Union
 
 from pypdf import PdfReader
-from pypdf.errors import ParseError, PdfReadError
+from pypdf.errors import DependencyError, PyPdfError
 
-_PDF_SYNTAX = (PdfReadError, ParseError)
+_UNREADABLE = (PyPdfError, DependencyError, NotImplementedError)
 _ENDS = frozenset(" \t\r\n")
 
 
@@ -135,14 +135,12 @@ class FileError:
 ParseOutcome = Union[Ok, FileError]
 
 
-def _trailer_has_encrypt(data: bytes) -> bool:
-    start = data.rfind(b"startxref")
-    if start < 0:
+def _utf8(value: str) -> bool:
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
         return False
-    marker = data.rfind(b"trailer", 0, start)
-    if marker < 0:
-        return False
-    return b"/Encrypt" in data[marker:start]
+    return True
 
 
 def parse_pdf(data: bytes, max_pages: int) -> ParseOutcome:
@@ -150,8 +148,6 @@ def parse_pdf(data: bytes, max_pages: int) -> ParseOutcome:
         raise TypeError("data")
     if type(max_pages) is not int:
         raise TypeError("max_pages")
-    if _trailer_has_encrypt(data):
-        return FileError(FileCode.ENCRYPTED)
     try:
         reader = PdfReader(BytesIO(data))
         if reader.is_encrypted:
@@ -168,8 +164,10 @@ def parse_pdf(data: bytes, max_pages: int) -> ParseOutcome:
             page_no = index + 1
             if trimmed == "":
                 pages.append(EmptyPage(page_no))
+            elif not _utf8(trimmed):
+                return FileError(FileCode.CORRUPTED)
             else:
                 pages.append(TextPage(page_no, (Paragraph(trimmed),)))
         return Ok(DocumentInfo(count), tuple(pages))
-    except _PDF_SYNTAX:
+    except _UNREADABLE:
         return FileError(FileCode.CORRUPTED)
