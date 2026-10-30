@@ -115,3 +115,13 @@ go vet ./...
 - 资料上传和真实的资料列表。`GET /documents` 只有鉴权后的空列表。
 - 前端注册页和登录页。
 - AC-01-08 的 5 分钟压测。
+
+## 9 PDF 文本层（2026-10-30）
+
+`parse_pdf` 读 PDF 字节，返回 `Ok` 或 `FileError`。有文本的页是 `TextPage`，里面一个 `Paragraph`。去空白后没有文本的页是 `EmptyPage`，页码不重排。加密、超过 `max_pages`、读不出来的文件不带页。
+
+gRPC 只在 `server.py`。口令不对时返回 `UNAUTHENTICATED`，并且不建临时文件。请求读完后才写事件。文件错误放在 OK 流里的 `ParseError`。
+
+这一轮没有做 Office、网页、图片、录音，也没有做标题和表格分类。这个进程不交页面图片。现有 Go 客户端也不读页面图片。
+
+在 `docreader/` 下，`pytest -q` 的结果是 7 passed。设置 `DOCREADER_PY` 和 `DOCREADER_ROOT` 后，`go test ./internal/platform/docreader/ -run TestParsePDFReadsPythonPages` 通过。未设置这两个变量时，该测试跳过。
