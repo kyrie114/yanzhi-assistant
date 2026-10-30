@@ -160,7 +160,7 @@ TEST_DATABASE_URL=... go test ./internal/integration   # 14 个测试通过
 
 ### 9.4 这一轮仍然没做
 
-- docreader 的 Python 服务。上传后 worker 会实际领取任务，取文件、调解析，拿不到 docreader 就把资料标成失败，原因「文档解析服务暂不可用」。这一步已在本地跑通。
+- docreader 当时没有 Python 服务。2026-10-30 补上了 PDF 文本层，见第 10 节。服务没启动时，上传后的资料仍会失败，原因是「文档解析服务暂不可用」。
 - 前端。
 - FR-10、FR-11、FR-14 至 FR-23、FR-25 至 FR-29。
 - AC-01-08 压测和 NFR 里的性能、部署检查。
@@ -169,3 +169,13 @@ TEST_DATABASE_URL=... go test ./internal/integration   # 14 个测试通过
 ### 9.5 提交
 
 改动在 `feat/server-runtime` 分支（`git worktree`），完成并验证后合并回 `main`。需求跟踪矩阵同步更新到 1.2。
+
+## 10 PDF 文本层（2026-10-30）
+
+`parse_pdf` 读 PDF 字节，返回 `Ok` 或 `FileError`。有文本的页是 `TextPage`，里面一个 `Paragraph`。去空白后没有文本的页是 `EmptyPage`，页码不重排。加密、超过 `max_pages`、读不出来的文件不带页。
+
+gRPC 只在 `server.py`。口令不对时返回 `UNAUTHENTICATED`，并且不建临时文件。请求读完后才写事件。文件错误放在 OK 流里的 `ParseError`。
+
+这一轮没有做 Office、网页、图片、录音，也没有做标题和表格分类。扫描件仍然会在入库时变成「识别未成功」，因为客户端不读页面图片。
+
+在 `docreader/` 下，`docreader\.venv\Scripts\python.exe -m pytest -q` 的结果是 7 passed。设置 `DOCREADER_PY` 和 `DOCREADER_ROOT` 后，`go test ./internal/platform/docreader/ -run TestParsePDFReadsPythonPages` 通过，Go 客户端读到两页文字。未设置这两个变量时，该测试跳过。

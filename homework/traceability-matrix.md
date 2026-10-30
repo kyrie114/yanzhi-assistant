@@ -3,14 +3,14 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | YZ-RTM-001 |
-| 版本 | 1.2 |
+| 版本 | 1.3 |
 | 状态 | 评审稿 |
-| 日期 | 2026-10-24 |
+| 日期 | 2026-10-30 |
 | 关联文档 | [requirements.md](../docs/requirements/requirements.md)、[user-stories.md](../docs/requirements/user-stories.md)、[acceptance-criteria.md](../docs/requirements/acceptance-criteria.md) |
 
 一行对应一组功能需求与用户故事。一个故事关联多项功能时拆成多行，每条验收标准只出现在一行中。优先级与用户故事一致。
 
-1.1（2026-10-11）建立本表时状态均为待开发。1.2（2026-10-24）按 `feat/server-runtime` 分支的代码更新状态列，并在第 4 节写明实际位置和仍未完成的部分；需求条目没有改动。
+1.1（2026-10-11）建立本表时状态均为待开发。1.2（2026-10-24）按 `feat/server-runtime` 分支的代码更新状态列，并在第 4 节写明实际位置和仍未完成的部分；需求条目没有改动。1.3（2026-10-30）把 FR-04 改成 PDF 文本层已可解析。扫描件和入库端到端仍未做。
 
 验证方式：主服务使用 Go 测试，外部模型使用替身；docreader 使用 pytest；浏览器端到端使用 Playwright；评测和页码抽检由人完成。
 
@@ -24,7 +24,7 @@
 | 2 | FR-02 | US-08 | AC-08-01, AC-08-03, AC-08-04, AC-08-05 | 必须 | 接口 | server/access_test.go | 部分实现 |
 | 3 | FR-03 | US-02 | AC-02-01, AC-02-02, AC-02-03, AC-02-04, AC-02-05, AC-02-06, AC-02-07, AC-02-08, AC-02-09, AC-02-10, AC-02-11, AC-02-12 | 必须 | 接口、端到端 | server/knowledge_test.go | 已实现 |
 | 4 | FR-03 | US-04 | AC-04-01, AC-04-02, AC-04-03 | 必须 | 接口、端到端 | server/knowledge_test.go | 已实现 |
-| 5 | FR-04 | US-03 | AC-03-01, AC-03-02, AC-03-03, AC-03-04, AC-03-05, AC-03-06, AC-03-07, AC-03-08 | 必须 | 接口、docreader 单元、端到端 | server/ingest_test.go、docreader/parser | 部分实现（docreader 服务未提供） |
+| 5 | FR-04 | US-03 | AC-03-01, AC-03-02, AC-03-03, AC-03-04, AC-03-05, AC-03-06, AC-03-07, AC-03-08 | 必须 | 接口、docreader 单元、端到端 | server/ingest_test.go、docreader/parser | 部分实现（PDF 文本层可解析。扫描件、入库端到端和 20 页时限未做） |
 | 6 | FR-04 | US-04 | AC-04-04 | 必须 | 接口 | server/ingest_test.go | 部分实现 |
 | 7 | FR-05 | US-05 | AC-05-01, AC-05-02, AC-05-03, AC-05-04, AC-05-05, AC-05-06 | 必须 | 接口 | server/tag_test.go | 已实现 |
 | 8 | FR-06 | US-06 | AC-06-01, AC-06-02, AC-06-03, AC-06-04, AC-06-05, AC-06-06, AC-06-07, AC-06-08, AC-06-09, AC-06-10, AC-06-11, AC-06-12, AC-06-13 | 必须 | 单元、接口、评测 | server/qa_test.go、eval/qa_eval.py | 部分实现（无改写、重排、网页检索，无评测集） |
@@ -97,7 +97,7 @@
 
 ### 4.3 仍然缺的部分
 
-- docreader 的 Python 服务没有实现，只有 gRPC 契约和 Go 客户端，所以真实 PDF 的解析、切块、向量化没有端到端验证。上传后 worker 会把资料标成失败，原因是「文档解析服务暂不可用」。
+- docreader 已能按物理页交回 PDF 文本层。Go 客户端对这个进程的一次调用能取回页码和段落。扫描件页面图片、视觉识别，以及从上传到向量化的整段入库，还没有端到端验证。docreader 没启动时，上传后的资料仍会失败，原因是「文档解析服务暂不可用」。
 - 前端不存在。
 - FR-10、FR-11、FR-14 至 FR-23、FR-25 至 FR-29 没有代码。
 - AC-01-08 压测、NFR-01、NFR-02、NFR-09、NFR-11、NFR-12 没有做。
