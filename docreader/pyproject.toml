@@ -1,0 +1,25 @@
+[project]
+name = "docreader"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "pypdf==6.21.4",
+    "grpcio==1.85.0",
+    "grpcio-tools==1.85.0",
+    "protobuf==7.36.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.2.0",
+]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["docreader*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

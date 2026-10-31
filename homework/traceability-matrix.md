@@ -3,12 +3,14 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | YZ-RTM-001 |
-| 版本 | 1.1 |
+| 版本 | 1.2 |
 | 状态 | 评审稿 |
-| 日期 | 2026-10-11 |
+| 日期 | 2026-10-30 |
 | 关联文档 | [requirements.md](../docs/requirements/requirements.md)、[user-stories.md](../docs/requirements/user-stories.md)、[acceptance-criteria.md](../docs/requirements/acceptance-criteria.md) |
 
-一行对应一组功能需求与用户故事。一个故事关联多项功能时拆成多行，每条验收标准只出现在一行中。优先级与用户故事一致。状态在需求阶段均为待开发。
+一行对应一组功能需求与用户故事。一个故事关联多项功能时拆成多行，每条验收标准只出现在一行中。优先级与用户故事一致。
+
+1.1（2026-10-11）建立本表时状态均为待开发。1.2（2026-10-30）只把 FR-04 改为 PDF 文本层已可解析。其余行仍是待开发。扫描件和入库端到端未做。
 
 验证方式：主服务使用 Go 测试，外部模型使用替身；docreader 使用 pytest；浏览器端到端使用 Playwright；评测和页码抽检由人完成。
 
@@ -20,7 +22,7 @@
 | 2 | FR-02 | US-08 | AC-08-01, AC-08-03, AC-08-04, AC-08-05 | 必须 | 接口 | server/access_test.go | 待开发 |
 | 3 | FR-03 | US-02 | AC-02-01, AC-02-02, AC-02-03, AC-02-04, AC-02-05, AC-02-06, AC-02-07, AC-02-08, AC-02-09, AC-02-10, AC-02-11, AC-02-12 | 必须 | 接口、端到端 | server/knowledge_test.go | 待开发 |
 | 4 | FR-03 | US-04 | AC-04-01, AC-04-02, AC-04-03 | 必须 | 接口、端到端 | server/knowledge_test.go | 待开发 |
-| 5 | FR-04 | US-03 | AC-03-01, AC-03-02, AC-03-03, AC-03-04, AC-03-05, AC-03-06, AC-03-07, AC-03-08 | 必须 | 接口、docreader 单元、端到端 | server/ingest_test.go、docreader/parser | 待开发 |
+| 5 | FR-04 | US-03 | AC-03-01, AC-03-02, AC-03-03, AC-03-04, AC-03-05, AC-03-06, AC-03-07, AC-03-08 | 必须 | 接口、docreader 单元、端到端 | server/ingest_test.go、docreader/parser | 部分实现（PDF 文本层可解析。扫描件、入库端到端和 20 页时限未做） |
 | 6 | FR-04 | US-04 | AC-04-04 | 必须 | 接口 | server/ingest_test.go | 待开发 |
 | 7 | FR-05 | US-05 | AC-05-01, AC-05-02, AC-05-03, AC-05-04, AC-05-05, AC-05-06 | 必须 | 接口 | server/tag_test.go | 待开发 |
 | 8 | FR-06 | US-06 | AC-06-01, AC-06-02, AC-06-03, AC-06-04, AC-06-05, AC-06-06, AC-06-07, AC-06-08, AC-06-09, AC-06-10, AC-06-11, AC-06-12, AC-06-13 | 必须 | 单元、接口、评测 | server/qa_test.go、eval/qa_eval.py | 待开发 |
@@ -72,3 +74,4 @@
 - 用户故事 US-01 至 US-30 全部出现。
 - 验收标准每条恰好出现在第 1 节的一行中。
 - 跟踪行数为 32。US-04 和 US-08 各对应两项功能，因此行数多于故事数。
+
