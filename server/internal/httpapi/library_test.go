@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"yanzhi/server/internal/apperr"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"yanzhi/server/internal/identity"
 	"yanzhi/server/internal/ingest"
 	"yanzhi/server/internal/jobs"
@@ -54,8 +54,14 @@ func TestUploadUsesDocreaderWhenDatabaseIsConfigured(t *testing.T) {
 	}
 	dir := t.TempDir()
 	library := knowledge.Service{Pool: pool, Files: files.Store{Root: dir}}
-	handler := NewLibraryHandler(accounts, library)
+	key := bytes.Repeat([]byte{7}, 32)
+	models := provider.Store{Pool: pool, Key: key}
+	handler := NewLibraryHandler(accounts, library, models)
 	token := registerLibraryUser(t, handler)
+	promoteAdmin(t, handler, pool, token)
+	embed := fakeEmbedder(t)
+	defer embed.Close()
+	saveModel(t, handler, token, embed.URL)
 
 	rec := jsonRequest(t, handler, http.MethodPost, "/api/v1/kbs", token, map[string]string{"name": "论文"})
 	if rec.Code != http.StatusCreated {
@@ -95,10 +101,10 @@ func TestUploadUsesDocreaderWhenDatabaseIsConfigured(t *testing.T) {
 	runner := ingest.Runner{
 		Pool: pool, Files: library.Files,
 		Reader: docreader.New(addr, "live-token", 10*time.Second),
-		Models: provider.Store{Pool: pool},
+		Models: models, AI: provider.Client{},
 		Chunk:  ingest.DefaultConfig(), EmbedBatch: 16, Timeout: 10 * time.Second,
 	}
-	if err := runner.Run(ctx, job); err != nil && err.Error() != apperr.ErrModelMissing.Message {
+	if err := runner.Run(ctx, job); err != nil {
 		t.Fatal(err)
 	}
 	rec = jsonRequest(t, handler, http.MethodGet, "/api/v1/documents/"+doc.ID, token, nil)
@@ -110,12 +116,59 @@ func TestUploadUsesDocreaderWhenDatabaseIsConfigured(t *testing.T) {
 		FailureReason *string `json:"failure_reason"`
 	}
 	decode(t, rec.Body.Bytes(), &got)
-	if got.FailureReason != nil && *got.FailureReason == apperr.MsgDocreader {
-		t.Fatalf("parser was not used: %+v", got)
+	if got.Status != "已完成" || got.FailureReason != nil {
+		t.Fatalf("after parse and embed: %+v", got)
 	}
-	if got.Status != "失败" || got.FailureReason == nil || *got.FailureReason != apperr.ErrModelMissing.Message {
-		t.Fatalf("after parse without an embedding model: %+v", got)
+}
+
+func promoteAdmin(t *testing.T, handler http.Handler, pool *pgxpool.Pool, token string) {
+	t.Helper()
+	rec := jsonRequest(t, handler, http.MethodGet, "/api/v1/me", token, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("me: %d %s", rec.Code, rec.Body.Bytes())
 	}
+	var me struct {
+		ID string `json:"id"`
+	}
+	decode(t, rec.Body.Bytes(), &me)
+	if _, err := pool.Exec(context.Background(), `UPDATE users SET role = 'admin' WHERE id = $1::uuid`, db.MustUUID(me.ID)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func saveModel(t *testing.T, handler http.Handler, token, base string) {
+	t.Helper()
+	dim := 4
+	rec := jsonRequest(t, handler, http.MethodPut, "/api/v1/admin/model-configs/embedding", token, map[string]any{
+		"base_url": base + "/v1", "model_name": "embed-test", "api_key": "sk-test", "dimension": dim,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("model: %d %s", rec.Code, rec.Body.Bytes())
+	}
+}
+
+func fakeEmbedder(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Input json.RawMessage `json:"input"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		n := 1
+		if len(req.Input) > 0 && req.Input[0] == '[' {
+			var texts []string
+			if json.Unmarshal(req.Input, &texts) == nil && len(texts) > 0 {
+				n = len(texts)
+			}
+		}
+		data := make([]map[string]any, n)
+		for i := range data {
+			data[i] = map[string]any{"index": i, "embedding": []float32{0.1, 0.2, 0.3, 0.4}}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": data, "usage": map[string]int{"prompt_tokens": n},
+		})
+	}))
 }
 
 func registerLibraryUser(t *testing.T, handler http.Handler) string {

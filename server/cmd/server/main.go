@@ -172,11 +172,12 @@ func serveDatabase() error {
 		return err
 	}
 	library := knowledge.Service{Pool: pool, Files: files.Store{Root: cfg.DataDir}}
+	models := provider.Store{Pool: pool, Key: cfg.AESKey}
 	runner := ingest.Runner{
 		Pool:   pool,
 		Files:  library.Files,
 		Reader: docreader.New(cfg.DocreaderAddr, cfg.DocreaderToken, cfg.DocTimeout),
-		Models: provider.Store{Pool: pool},
+		Models: models,
 		Chunk: ingest.Config{
 			Min: cfg.ChunkMin, Max: cfg.ChunkMax, Overlap: cfg.ChunkOverlap,
 			ParentMin: cfg.ParentMin, ParentMax: cfg.ParentMax,
@@ -190,5 +191,5 @@ func serveDatabase() error {
 		return err
 	}
 	log.Printf("library API listening on %s", listener.Addr())
-	return serve(ctx, &http.Server{Handler: httpapi.NewLibraryHandler(accounts, library)}, listener)
+	return serve(ctx, &http.Server{Handler: httpapi.NewLibraryHandler(accounts, library, models)}, listener)
 }

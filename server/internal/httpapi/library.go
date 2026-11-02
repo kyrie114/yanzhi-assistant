@@ -9,10 +9,11 @@ import (
 	"yanzhi/server/internal/apperr"
 	"yanzhi/server/internal/identity"
 	"yanzhi/server/internal/knowledge"
+	"yanzhi/server/internal/provider"
 )
 
-func NewLibraryHandler(accounts *identity.Service, library knowledge.Service) http.Handler {
-	h := &libraryHandler{accounts: accounts, library: library}
+func NewLibraryHandler(accounts *identity.Service, library knowledge.Service, models provider.Store) http.Handler {
+	h := &libraryHandler{accounts: accounts, library: library, models: models}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/v1/auth/register", h.register)
 	mux.HandleFunc("POST /api/v1/auth/login", h.login)
@@ -21,12 +22,16 @@ func NewLibraryHandler(accounts *identity.Service, library knowledge.Service) ht
 	mux.HandleFunc("GET /api/v1/kbs", h.listKBs)
 	mux.HandleFunc("POST /api/v1/kbs/{kb_id}/documents", h.upload)
 	mux.HandleFunc("GET /api/v1/documents/{id}", h.document)
+	mux.HandleFunc("GET /api/v1/admin/model-configs", h.listModels)
+	mux.HandleFunc("PUT /api/v1/admin/model-configs/{kind}", h.putModel)
+	mux.HandleFunc("POST /api/v1/admin/model-configs/{kind}/connection-tests", h.probeModel)
 	return withRequestID(mux)
 }
 
 type libraryHandler struct {
 	accounts *identity.Service
 	library  knowledge.Service
+	models   provider.Store
 }
 
 func (h *libraryHandler) register(w http.ResponseWriter, r *http.Request) {
@@ -189,15 +194,94 @@ func (h *libraryHandler) document(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *libraryHandler) owner(r *http.Request) (string, error) {
-	raw, err := bearer(r)
-	if err != nil {
-		return "", err
-	}
-	principal, err := h.accounts.Authenticate(r.Context(), raw)
+	principal, err := h.principal(r)
 	if err != nil {
 		return "", err
 	}
 	return principal.UserID, nil
+}
+
+func (h *libraryHandler) principal(r *http.Request) (identity.Principal, error) {
+	raw, err := bearer(r)
+	if err != nil {
+		return identity.Principal{}, err
+	}
+	return h.accounts.Authenticate(r.Context(), raw)
+}
+
+func (h *libraryHandler) admin(r *http.Request) error {
+	principal, err := h.principal(r)
+	if err != nil {
+		return err
+	}
+	if principal.Role != "admin" {
+		return apperr.ErrForbidden
+	}
+	return nil
+}
+
+func (h *libraryHandler) listModels(w http.ResponseWriter, r *http.Request) {
+	if err := h.admin(r); err != nil {
+		writeLibraryErr(w, r, err)
+		return
+	}
+	items, err := h.models.List(r.Context())
+	if err != nil {
+		writeLibraryErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (h *libraryHandler) putModel(w http.ResponseWriter, r *http.Request) {
+	if err := h.admin(r); err != nil {
+		writeLibraryErr(w, r, err)
+		return
+	}
+	var req struct {
+		BaseURL        string  `json:"base_url"`
+		ModelName      string  `json:"model_name"`
+		APIKey         *string `json:"api_key"`
+		Dimension      *int    `json:"dimension"`
+		ConfirmReindex bool    `json:"confirm_reindex"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeLibraryErr(w, r, err)
+		return
+	}
+	saved, err := h.models.Put(r.Context(), r.PathValue("kind"), provider.PutInput{
+		BaseURL: req.BaseURL, ModelName: req.ModelName, APIKey: req.APIKey,
+		Dimension: req.Dimension, ConfirmReindex: req.ConfirmReindex,
+	})
+	if err != nil {
+		writeLibraryErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, saved)
+}
+
+func (h *libraryHandler) probeModel(w http.ResponseWriter, r *http.Request) {
+	if err := h.admin(r); err != nil {
+		writeLibraryErr(w, r, err)
+		return
+	}
+	var req struct {
+		BaseURL   string `json:"base_url"`
+		ModelName string `json:"model_name"`
+		APIKey    string `json:"api_key"`
+		Dimension int    `json:"dimension"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeLibraryErr(w, r, err)
+		return
+	}
+	probe := h.models.HTTP.Probe(r.Context(), provider.Remote{
+		Kind: r.PathValue("kind"), BaseURL: req.BaseURL, Model: req.ModelName,
+		APIKey: req.APIKey, Dimension: req.Dimension,
+	})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"result": probe.Result, "message": probe.Message, "elapsed_ms": probe.ElapsedMS,
+	})
 }
 
 func writeLibraryErr(w http.ResponseWriter, r *http.Request, err error) {
@@ -214,8 +298,10 @@ func writeLibraryErr(w http.ResponseWriter, r *http.Request, err error) {
 		switch app.Code {
 		case "UNAUTHENTICATED", "INVALID_CREDENTIALS":
 			status = http.StatusUnauthorized
-		case "EMAIL_TAKEN", "DUPLICATE_DOCUMENT":
+		case "EMAIL_TAKEN", "DUPLICATE_DOCUMENT", "REINDEX_CONFIRMATION_REQUIRED":
 			status = http.StatusConflict
+		case "FORBIDDEN":
+			status = http.StatusForbidden
 		case "VALIDATION_ERROR", "PASSWORD_WEAK":
 			status = http.StatusUnprocessableEntity
 		case "NOT_FOUND":
