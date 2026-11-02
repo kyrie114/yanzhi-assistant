@@ -76,7 +76,7 @@ func TestUploadUsesDocreaderWhenDatabaseIsConfigured(t *testing.T) {
 		Status string `json:"status"`
 	}
 	decode(t, rec.Body.Bytes(), &doc)
-	if doc.Status != "pending" {
+	if doc.Status != "待处理" {
 		t.Fatalf("status %s", doc.Status)
 	}
 
@@ -98,7 +98,7 @@ func TestUploadUsesDocreaderWhenDatabaseIsConfigured(t *testing.T) {
 		Models: provider.Store{Pool: pool},
 		Chunk:  ingest.DefaultConfig(), EmbedBatch: 16, Timeout: 10 * time.Second,
 	}
-	if err := runner.Run(ctx, job); err != nil {
+	if err := runner.Run(ctx, job); err != nil && err.Error() != apperr.ErrModelMissing.Message {
 		t.Fatal(err)
 	}
 	rec = jsonRequest(t, handler, http.MethodGet, "/api/v1/documents/"+doc.ID, token, nil)
@@ -113,7 +113,7 @@ func TestUploadUsesDocreaderWhenDatabaseIsConfigured(t *testing.T) {
 	if got.FailureReason != nil && *got.FailureReason == apperr.MsgDocreader {
 		t.Fatalf("parser was not used: %+v", got)
 	}
-	if got.Status != "failed" || got.FailureReason == nil || *got.FailureReason != apperr.ErrModelMissing.Message {
+	if got.Status != "失败" || got.FailureReason == nil || *got.FailureReason != apperr.ErrModelMissing.Message {
 		t.Fatalf("after parse without an embedding model: %+v", got)
 	}
 }
