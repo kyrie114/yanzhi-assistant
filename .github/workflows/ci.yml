@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - name: docreader venv
+        working-directory: docreader
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -e '.[dev]'
+      - name: docreader pytest
+        working-directory: docreader
+        run: .venv/bin/pytest -q
+      - name: server go test
+        working-directory: server
+        env:
+          DOCREADER_PY: ${{ github.workspace }}/docreader/.venv/bin/python
+          DOCREADER_ROOT: ${{ github.workspace }}/docreader
+        run: go test ./...

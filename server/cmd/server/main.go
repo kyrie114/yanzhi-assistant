@@ -21,6 +21,16 @@ import (
 
 	"yanzhi/server/internal/account"
 	"yanzhi/server/internal/httpapi"
+	"yanzhi/server/internal/identity"
+	"yanzhi/server/internal/ingest"
+	"yanzhi/server/internal/jobs"
+	"yanzhi/server/internal/knowledge"
+	"yanzhi/server/internal/platform/clock"
+	pconfig "yanzhi/server/internal/platform/config"
+	"yanzhi/server/internal/platform/db"
+	"yanzhi/server/internal/platform/docreader"
+	"yanzhi/server/internal/platform/files"
+	"yanzhi/server/internal/provider"
 )
 
 const usage = "Usage: server --in-memory (or ACCOUNT_STORE=memory); JWT_SECRET must contain at least 32 bytes. Optional: HTTP_ADDR, BCRYPT_COST."
@@ -115,6 +125,12 @@ func serve(ctx context.Context, srv *http.Server, listener net.Listener) error {
 }
 
 func main() {
+	if os.Getenv("DATABASE_URL") != "" {
+		if err := serveDatabase(); err != nil {
+			log.Fatalf("server: %v", err)
+		}
+		return
+	}
 	cfg, err := loadConfig(os.Args[1:], os.Getenv)
 	if errors.Is(err, flag.ErrHelp) {
 		fmt.Fprintln(os.Stdout, usage)
@@ -134,4 +150,46 @@ func main() {
 	if err := serve(ctx, srv, listener); err != nil {
 		log.Fatalf("server: %v", err)
 	}
+}
+
+func serveDatabase() error {
+	cfg, err := pconfig.Load()
+	if err != nil {
+		return err
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := db.Migrate(ctx, cfg.DatabaseURL, cfg.MigrationsDir); err != nil {
+		return err
+	}
+	pool, err := db.Connect(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	accounts, err := identity.NewService(pool, cfg.JWTSecret, cfg.BcryptCost, clock.System{})
+	if err != nil {
+		return err
+	}
+	library := knowledge.Service{Pool: pool, Files: files.Store{Root: cfg.DataDir}}
+	models := provider.Store{Pool: pool, Key: cfg.AESKey}
+	runner := ingest.Runner{
+		Pool:   pool,
+		Files:  library.Files,
+		Reader: docreader.New(cfg.DocreaderAddr, cfg.DocreaderToken, cfg.DocTimeout),
+		Models: models,
+		Chunk: ingest.Config{
+			Min: cfg.ChunkMin, Max: cfg.ChunkMax, Overlap: cfg.ChunkOverlap,
+			ParentMin: cfg.ParentMin, ParentMax: cfg.ParentMax,
+		},
+		EmbedBatch: cfg.EmbedBatch,
+		Timeout:    cfg.DocTimeout,
+	}
+	go jobs.Loop(ctx, pool, []string{"ingest"}, runner.Run)
+	listener, err := net.Listen("tcp", cfg.HTTPAddr)
+	if err != nil {
+		return err
+	}
+	log.Printf("library API listening on %s", listener.Addr())
+	return serve(ctx, &http.Server{Handler: httpapi.NewLibraryHandler(accounts, library, models)}, listener)
 }
