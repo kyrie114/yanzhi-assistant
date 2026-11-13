@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"yanzhi/server/internal/access"
 	"yanzhi/server/internal/account"
@@ -156,6 +157,10 @@ func (h *handler) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		h.writeErr(w, r, apperr.ErrNotFound)
 		return
 	}
+
+	rc := http.NewResponseController(w)
+	_ = rc.SetReadDeadline(time.Now().Add(2 * time.Minute))
+	_ = rc.SetWriteDeadline(time.Now().Add(2 * time.Minute))
 
 	mr, err := r.MultipartReader()
 	if err != nil {
@@ -362,6 +367,7 @@ func (h *handler) downloadDocumentFile(w http.ResponseWriter, r *http.Request) {
 		h.writeErr(w, r, err)
 		return
 	}
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(2 * time.Minute))
 	w.Header().Set("Content-Type", "application/pdf")
 	w.Header().Set("Content-Disposition", contentDisposition(title))
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))

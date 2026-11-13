@@ -207,31 +207,35 @@ func serveDatabase() error {
 		return err
 	}
 	defer pool.Close()
+	if err := jobs.Recover(ctx, pool); err != nil {
+		return err
+	}
 	accounts, err := identity.NewService(pool, cfg.JWTSecret, cfg.BcryptCost, clock.System{})
 	if err != nil {
 		return err
 	}
 	library := knowledge.Service{Pool: pool, Files: files.Store{Root: cfg.DataDir}}
-	models := provider.Store{Pool: pool, Key: cfg.AESKey}
-	runner := ingest.Runner{
-		Pool:   pool,
-		Files:  library.Files,
-		Reader: docreader.New(cfg.DocreaderAddr, cfg.DocreaderToken, cfg.DocTimeout),
-		Models: models,
-		Chunk: ingest.Config{
-			Min: cfg.ChunkMin, Max: cfg.ChunkMax, Overlap: cfg.ChunkOverlap,
-			ParentMin: cfg.ParentMin, ParentMax: cfg.ParentMax,
-		},
-		EmbedBatch: cfg.EmbedBatch,
-		Timeout:    cfg.DocTimeout,
-	}
-	go jobs.Loop(ctx, pool, []string{"ingest"}, runner.Run)
 	aiClient := provider.Client{
 		HTTP: &http.Client{
 			Transport: &http.Transport{
 				ResponseHeaderTimeout: cfg.ModelTimeout,
 			},
 		},
+	}
+	models := provider.Store{Pool: pool, Key: cfg.AESKey, HTTP: aiClient}
+	readerClient := docreader.New(cfg.DocreaderAddr, cfg.DocreaderToken, cfg.DocTimeout)
+	runner := ingest.Runner{
+		Pool:   pool,
+		Files:  library.Files,
+		Reader: readerClient,
+		Models: models,
+		AI:     aiClient,
+		Chunk: ingest.Config{
+			Min: cfg.ChunkMin, Max: cfg.ChunkMax, Overlap: cfg.ChunkOverlap,
+			ParentMin: cfg.ParentMin, ParentMax: cfg.ParentMax,
+		},
+		EmbedBatch: cfg.EmbedBatch,
+		Timeout:    cfg.DocTimeout,
 	}
 	gw := provider.NewPGGateway(pool, models, aiClient)
 	ret := retrieval.NewEngine(retrieval.NewPGCorpus(pool), gw, retrieval.SearchConfig{
@@ -243,6 +247,13 @@ func serveDatabase() error {
 		DefaultThreshold: cfg.Threshold,
 	})
 	graphSvc := graph.Service{Pool: pool, AI: aiClient, Models: models, Timeout: cfg.DocTimeout}
+	for range max(1, cfg.IngestWorkers) {
+		go jobs.Loop(ctx, pool, []string{"ingest"}, runner.Run)
+	}
+	go jobs.Loop(ctx, pool, []string{"reembed"}, runner.Reembed)
+	for range max(1, cfg.GraphWorkers) {
+		go jobs.Loop(ctx, pool, []string{"graph_extract"}, graphSvc.Extract)
+	}
 	qaStore := qa.NewPGStore(pool)
 	qaSvc := qa.NewService(ctx, qaStore, library, gw, ret, graphSvc)
 
@@ -257,6 +268,7 @@ func serveDatabase() error {
 			library,
 			models,
 			httpapi.WithQA(qaSvc),
+			httpapi.WithHealthProbe(readerClient.Healthy),
 			httpapi.WithEmailRestriction(cfg.EmailRestrict),
 		),
 		ReadHeaderTimeout: 5 * time.Second,

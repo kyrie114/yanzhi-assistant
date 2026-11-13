@@ -35,6 +35,7 @@ type handler struct {
 	kb            KnowledgeBackend
 	qa            QABackend
 	authFn        func(*http.Request) (account.Caller, error)
+	healthProbe   func(context.Context) bool
 	restrictEmail bool
 }
 
@@ -47,6 +48,7 @@ func NewHandler(svc *account.Service, opts ...Option) http.Handler {
 		}
 	}
 	mux := http.NewServeMux()
+	h.registerHealthRoute(mux)
 	mux.HandleFunc("POST /api/v1/auth/register", h.register)
 	mux.HandleFunc("POST /api/v1/auth/login", h.login)
 	mux.HandleFunc("POST /api/v1/auth/logout", h.logout)

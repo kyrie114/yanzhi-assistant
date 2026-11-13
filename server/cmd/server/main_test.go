@@ -277,6 +277,12 @@ func TestInMemoryServerMountsQAAndKBSettings(t *testing.T) {
 		return raw
 	}
 
+	healthRaw := reqJSON(http.MethodGet, "/api/v1/health", "", nil, http.StatusOK)
+	var health map[string]string
+	if err := json.Unmarshal(healthRaw, &health); err != nil || health["status"] != "ok" || health["docreader"] != "unavailable" {
+		t.Fatalf("unexpected GET /api/v1/health: %s", healthRaw)
+	}
+
 	reqJSON(http.MethodPost, "/api/v1/auth/register", "", map[string]string{
 		"email": "qa-cmd@example.edu.cn", "name": "研发", "password": "Password123",
 	}, http.StatusCreated)

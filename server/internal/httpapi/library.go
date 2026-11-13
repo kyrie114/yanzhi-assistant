@@ -49,8 +49,11 @@ func NewLibraryHandler(accounts *identity.Service, library knowledge.Service, mo
 		domain:   domain,
 	}
 	mux := http.NewServeMux()
+	domain.registerHealthRoute(mux)
 	mux.HandleFunc("POST /api/v1/auth/register", h.register)
 	mux.HandleFunc("POST /api/v1/auth/login", h.login)
+	mux.HandleFunc("POST /api/v1/auth/logout", h.logout)
+	mux.HandleFunc("POST /api/v1/auth/password", h.changePassword)
 	mux.HandleFunc("GET /api/v1/me", h.me)
 	domain.registerDomainRoutes(mux)
 	mux.HandleFunc("GET /api/v1/admin/model-configs", h.listModels)
@@ -112,6 +115,40 @@ func (h *libraryHandler) me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, user)
+}
+
+func (h *libraryHandler) logout(w http.ResponseWriter, r *http.Request) {
+	p, err := h.principal(r)
+	if err != nil {
+		h.domain.writeErr(w, r, err)
+		return
+	}
+	if err := h.accounts.Logout(r.Context(), p); err != nil {
+		h.domain.writeErr(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *libraryHandler) changePassword(w http.ResponseWriter, r *http.Request) {
+	p, err := h.principal(r)
+	if err != nil {
+		h.domain.writeErr(w, r, err)
+		return
+	}
+	var req struct {
+		OldPassword string `json:"old_password"`
+		NewPassword string `json:"new_password"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		h.domain.writeErr(w, r, err)
+		return
+	}
+	if err := h.accounts.ChangePassword(r.Context(), p.UserID, req.OldPassword, req.NewPassword); err != nil {
+		h.domain.writeErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{})
 }
 
 func (h *libraryHandler) principal(r *http.Request) (identity.Principal, error) {
