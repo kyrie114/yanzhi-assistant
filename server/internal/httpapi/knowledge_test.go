@@ -171,8 +171,11 @@ func TestKBCreationAndValidation(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
-	var kbs []knowledge.KB
-	_ = json.Unmarshal(body, &kbs)
+	var kbsResp struct {
+		Items []knowledge.KB `json:"items"`
+	}
+	_ = json.Unmarshal(body, &kbsResp)
+	kbs := kbsResp.Items
 	if len(kbs) != 1 || kbs[0].ID != created.ID {
 		t.Fatalf("expected 1 kb in list, got %+v", kbs)
 	}
@@ -701,8 +704,11 @@ func TestAdminIsolationAndGates(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("admin GET /kbs expected 200, got %d", resp.StatusCode)
 	}
-	var adminKBs []knowledge.KB
-	_ = json.Unmarshal(body, &adminKBs)
+	var adminKBsResp struct {
+		Items []knowledge.KB `json:"items"`
+	}
+	_ = json.Unmarshal(body, &adminKBsResp)
+	adminKBs := adminKBsResp.Items
 	if len(adminKBs) != 0 {
 		t.Fatalf("AC-08-05: admin GET /kbs should be empty list, got %+v", adminKBs)
 	}

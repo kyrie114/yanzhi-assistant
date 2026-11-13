@@ -223,26 +223,79 @@ func (s Service) fail(ctx context.Context, documentID, reason string) error {
 	return errors.New(reason)
 }
 
-func (s Service) Supplement(ctx context.Context, owner string, chunkIDs []string, generation int64, limit int) ([]string, error) {
-	if len(chunkIDs) == 0 || limit <= 0 {
+// SupplementScope 是由 knowledge.ResolvedScope 满足的最小只读范围约束，避免在 graph 与 knowledge 间引入包环依赖。
+type SupplementScope interface {
+	OwnerID() string
+	GraphDocIDs() []string
+}
+
+// SupplementSQL 从种子切块作为证据的关系两端实体出发，沿一跳有效关系（含同关系共现与共享实体跨关系）
+// 取额外证据切块，并严格限定在同一用户、已启用图谱的范围内、状态为 ready 的当前向量代际切块上。
+const SupplementSQL = `
+		WITH seed_relations AS (
+			SELECT DISTINCT r.source_id, r.target_id
+			FROM kg_evidence e
+			JOIN kg_relations r ON r.id = e.relation_id
+			JOIN chunks c ON c.id = e.chunk_id
+			JOIN documents d ON d.id = c.document_id
+			WHERE e.chunk_id = ANY($1::uuid[])
+			  AND r.owner_id = $2
+			  AND r.suspended = false
+			  AND d.owner_id = $2
+			  AND d.status = 'ready'
+			  AND c.embedding_generation = $3
+			  AND d.id = ANY($4::uuid[])
+		),
+		hit_entities AS (
+			SELECT source_id AS entity_id FROM seed_relations
+			UNION
+			SELECT target_id AS entity_id FROM seed_relations
+		),
+		matched_relations AS (
+			SELECT r2.id
+			FROM kg_relations r2
+			WHERE r2.owner_id = $2
+			  AND r2.suspended = false
+			  AND (
+				  r2.source_id IN (SELECT entity_id FROM hit_entities)
+				  OR r2.target_id IN (SELECT entity_id FROM hit_entities)
+			  )
+		)
+		SELECT e2.chunk_id::text
+		FROM matched_relations mr
+		JOIN kg_evidence e2 ON e2.relation_id = mr.id
+		JOIN chunks c ON c.id = e2.chunk_id
+		JOIN documents d ON d.id = c.document_id
+		WHERE d.owner_id = $2
+		  AND d.status = 'ready'
+		  AND c.embedding_generation = $3
+		  AND d.id = ANY($4::uuid[])
+		  AND NOT (e2.chunk_id = ANY($1::uuid[]))
+		GROUP BY e2.chunk_id
+		ORDER BY count(DISTINCT mr.id) DESC, e2.chunk_id::text
+		LIMIT $5`
+
+func (s Service) Supplement(ctx context.Context, scope SupplementScope, chunkIDs []string, generation int64, limit int) ([]string, error) {
+	if scope == nil || len(chunkIDs) == 0 || limit <= 0 {
+		return nil, nil
+	}
+	docIDs := scope.GraphDocIDs()
+	if len(docIDs) == 0 {
 		return nil, nil
 	}
 	ids, ok := db.UUIDs(chunkIDs)
 	if !ok {
 		return nil, nil
 	}
-	rows, err := s.Pool.Query(ctx, `
-		SELECT DISTINCT e2.chunk_id::text
-		FROM kg_evidence e
-		JOIN kg_relations r ON r.id = e.relation_id AND r.suspended = false
-		JOIN kg_evidence e2 ON e2.relation_id = r.id AND e2.chunk_id <> e.chunk_id
-		JOIN chunks c ON c.id = e2.chunk_id
-		JOIN documents d ON d.id = c.document_id
-		WHERE e.chunk_id = ANY($1::uuid[])
-		  AND d.owner_id = $2
-		  AND d.status = 'ready'
-		  AND c.embedding_generation = $3
-		LIMIT $4`, ids, db.MustUUID(owner), generation, limit+len(chunkIDs))
+	dUUIDs, ok := db.UUIDs(docIDs)
+	if !ok {
+		return nil, nil
+	}
+	ownerUUID, ok := db.UUID(scope.OwnerID())
+	if !ok {
+		return nil, nil
+	}
+	rows, err := s.Pool.Query(ctx, SupplementSQL, ids, ownerUUID, generation, dUUIDs, limit)
 	if err != nil {
 		return nil, err
 	}

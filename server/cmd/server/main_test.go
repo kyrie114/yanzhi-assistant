@@ -216,3 +216,114 @@ func TestShutdownFinishesActiveRequest(t *testing.T) {
 		t.Fatal("server did not finish graceful shutdown")
 	}
 }
+
+func TestInMemoryServerMountsQAAndKBSettings(t *testing.T) {
+	cfg, err := loadConfig([]string{"--in-memory"}, func(k string) string {
+		switch k {
+		case "JWT_SECRET":
+			return testSecret
+		case "HTTP_ADDR":
+			return "127.0.0.1:0"
+		case "BCRYPT_COST":
+			return "4"
+		default:
+			return ""
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	appCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	srv := newHTTPServerWithContext(appCtx, cfg)
+	listener, err := net.Listen("tcp", cfg.addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- serve(appCtx, srv, listener) }()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			_ = srv.Close()
+		}
+	})
+
+	client := &http.Client{Timeout: 3 * time.Second}
+	t.Cleanup(client.CloseIdleConnections)
+	baseURL := "http://" + listener.Addr().String()
+	reqJSON := func(method, path, token string, body any, want int) []byte {
+		t.Helper()
+		var buf bytes.Buffer
+		if body != nil {
+			_ = json.NewEncoder(&buf).Encode(body)
+		}
+		req, _ := http.NewRequest(method, baseURL+path, &buf)
+		req.Header.Set("Content-Type", "application/json")
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		raw, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != want {
+			t.Fatalf("%s %s status=%d want=%d body=%s", method, path, resp.StatusCode, want, raw)
+		}
+		return raw
+	}
+
+	reqJSON(http.MethodPost, "/api/v1/auth/register", "", map[string]string{
+		"email": "qa-cmd@example.edu.cn", "name": "研发", "password": "Password123",
+	}, http.StatusCreated)
+	loginRaw := reqJSON(http.MethodPost, "/api/v1/auth/login", "", map[string]string{
+		"email": "qa-cmd@example.edu.cn", "password": "Password123",
+	}, http.StatusOK)
+	var tok struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.Unmarshal(loginRaw, &tok); err != nil {
+		t.Fatal(err)
+	}
+
+	kbRaw := reqJSON(http.MethodPost, "/api/v1/kbs", tok.AccessToken, map[string]string{"name": "测试库"}, http.StatusCreated)
+	var kb struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(kbRaw, &kb)
+
+	kbsRaw := reqJSON(http.MethodGet, "/api/v1/kbs", tok.AccessToken, nil, http.StatusOK)
+	var kbsEnv struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(kbsRaw, &kbsEnv); err != nil || len(kbsEnv.Items) != 1 || kbsEnv.Items[0].ID != kb.ID {
+		t.Fatalf("unexpected GET /kbs envelope: %s", kbsRaw)
+	}
+
+	reqJSON(http.MethodPatch, "/api/v1/kbs/"+kb.ID+"/settings", tok.AccessToken, map[string]any{
+		"answer_instruction": "简明扼要",
+		"graph_enabled":      false,
+	}, http.StatusOK)
+
+	sessRaw := reqJSON(http.MethodPost, "/api/v1/qa/sessions", tok.AccessToken, map[string]string{"title": "集成会话"}, http.StatusCreated)
+	var sess struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(sessRaw, &sess)
+
+	errRaw := reqJSON(http.MethodPost, "/api/v1/qa/sessions/"+sess.ID+"/turns", tok.AccessToken, map[string]any{
+		"question": "什么是图谱补充？",
+		"scope":    map[string]any{"type": "kb", "kb_id": kb.ID},
+	}, http.StatusConflict)
+	if !strings.Contains(string(errRaw), "NO_READY_DOCUMENTS") {
+		t.Fatalf("expected NO_READY_DOCUMENTS, got %s", errRaw)
+	}
+
+	reqJSON(http.MethodDelete, "/api/v1/qa/sessions/"+sess.ID, tok.AccessToken, nil, http.StatusOK)
+}

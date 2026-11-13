@@ -20,6 +20,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"yanzhi/server/internal/account"
+	"yanzhi/server/internal/graph"
 	"yanzhi/server/internal/httpapi"
 	"yanzhi/server/internal/identity"
 	"yanzhi/server/internal/ingest"
@@ -31,6 +32,8 @@ import (
 	"yanzhi/server/internal/platform/docreader"
 	"yanzhi/server/internal/platform/files"
 	"yanzhi/server/internal/provider"
+	"yanzhi/server/internal/qa"
+	"yanzhi/server/internal/retrieval"
 )
 
 const usage = "Usage: server --in-memory (or ACCOUNT_STORE=memory); JWT_SECRET must contain at least 32 bytes. Optional: HTTP_ADDR, BCRYPT_COST, FILES_ROOT, EMAIL_VERIFICATION_REQUIRED."
@@ -96,6 +99,10 @@ func loadConfig(args []string, getenv func(string) string) (config, error) {
 }
 
 func newHTTPServer(cfg config) *http.Server {
+	return newHTTPServerWithContext(context.Background(), cfg)
+}
+
+func newHTTPServerWithContext(appCtx context.Context, cfg config) *http.Server {
 	accStore := account.NewMemoryStore()
 	svc := account.NewService(accStore, nil, cfg.jwtSecret, cfg.bcryptCost)
 	var blobStore knowledge.BlobStore
@@ -105,8 +112,19 @@ func newHTTPServer(cfg config) *http.Server {
 		blobStore = knowledge.NewMemoryBlobStore()
 	}
 	kbStore := knowledge.NewMemoryStore(accStore, blobStore, nil)
+	gw := provider.NewMemoryGateway()
+	ret := retrieval.NewEngine(
+		retrieval.NewMemoryCorpus(qa.MemoryChunkSource(kbStore)),
+		gw,
+		retrieval.DefaultSearchConfig(),
+	)
+	graphMem := graph.NewMemoryStore()
+	qaStore := qa.NewMemoryStore(qa.WithAliveCheck(qa.MemoryAliveChecker(kbStore)))
+	qaSvc := qa.NewService(appCtx, qaStore, kbStore, gw, ret, graphMem)
+
 	handler := httpapi.NewHandler(svc,
 		httpapi.WithKnowledge(kbStore),
+		httpapi.WithQA(qaSvc),
 		httpapi.WithEmailRestriction(cfg.restrictEmail),
 	)
 	return &http.Server{
@@ -161,13 +179,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("configuration: %v; %s", err, usage)
 	}
-	srv := newHTTPServer(cfg)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	srv := newHTTPServerWithContext(ctx, cfg)
 	listener, err := net.Listen("tcp", cfg.addr)
 	if err != nil {
 		log.Fatalf("listen: %v", err)
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	log.Printf("account API listening on %s; memory storage: users and token revocations are lost on restart", listener.Addr())
 	if err := serve(ctx, srv, listener); err != nil {
 		log.Fatalf("server: %v", err)
@@ -208,10 +226,43 @@ func serveDatabase() error {
 		Timeout:    cfg.DocTimeout,
 	}
 	go jobs.Loop(ctx, pool, []string{"ingest"}, runner.Run)
+	aiClient := provider.Client{
+		HTTP: &http.Client{
+			Transport: &http.Transport{
+				ResponseHeaderTimeout: cfg.ModelTimeout,
+			},
+		},
+	}
+	gw := provider.NewPGGateway(pool, models, aiClient)
+	ret := retrieval.NewEngine(retrieval.NewPGCorpus(pool), gw, retrieval.SearchConfig{
+		TopK:             cfg.TopK,
+		RecallLimit:      20,
+		RRFK:             cfg.RRFK,
+		BM25K1:           cfg.BM25K1,
+		BM25B:            cfg.BM25B,
+		DefaultThreshold: cfg.Threshold,
+	})
+	graphSvc := graph.Service{Pool: pool, AI: aiClient, Models: models, Timeout: cfg.DocTimeout}
+	qaStore := qa.NewPGStore(pool)
+	qaSvc := qa.NewService(ctx, qaStore, library, gw, ret, graphSvc)
+
 	listener, err := net.Listen("tcp", cfg.HTTPAddr)
 	if err != nil {
 		return err
 	}
 	log.Printf("library API listening on %s", listener.Addr())
-	return serve(ctx, &http.Server{Handler: httpapi.NewLibraryHandler(accounts, library, models)}, listener)
+	return serve(ctx, &http.Server{
+		Handler: httpapi.NewLibraryHandler(
+			accounts,
+			library,
+			models,
+			httpapi.WithQA(qaSvc),
+			httpapi.WithEmailRestriction(cfg.EmailRestrict),
+		),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}, listener)
 }

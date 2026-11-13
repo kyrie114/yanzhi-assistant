@@ -22,12 +22,14 @@ type KnowledgeBackend interface {
 	ListKBs(ctx context.Context, owner string) ([]knowledge.KB, error)
 	CreateKB(ctx context.Context, owner, name string) (knowledge.KB, error)
 	GetKB(ctx context.Context, owner, id string) (knowledge.KB, error)
+	PatchKB(ctx context.Context, owner, id string, raw map[string]json.RawMessage) (knowledge.KB, error)
 	Upload(ctx context.Context, owner, kbID string, meta knowledge.UploadMeta, data []byte) (knowledge.UploadResult, error)
 	ListDocs(ctx context.Context, owner, kbID, q string, tagIDs []string, page, size int) ([]knowledge.Doc, int, error)
 	GetDoc(ctx context.Context, owner, id string) (knowledge.Doc, error)
 	PatchDoc(ctx context.Context, owner, id string, raw map[string]json.RawMessage) (knowledge.Doc, error)
 	Delete(ctx context.Context, owner, id string) error
 	File(ctx context.Context, owner, id string) (string, []byte, error)
+	ChunkDetail(ctx context.Context, owner, docID, chunkID string) (knowledge.ChunkDetail, error)
 	ListTags(ctx context.Context, owner string) ([]knowledge.Tag, error)
 	CreateTag(ctx context.Context, owner, name string) (knowledge.Tag, error)
 	PatchTag(ctx context.Context, owner, id, name string) (knowledge.Tag, error)
@@ -93,7 +95,7 @@ func (h *handler) listKBs(w http.ResponseWriter, r *http.Request) {
 	if kbs == nil {
 		kbs = []knowledge.KB{}
 	}
-	writeJSON(w, http.StatusOK, kbs)
+	writeJSON(w, http.StatusOK, map[string]any{"items": kbs})
 }
 
 func (h *handler) createKB(w http.ResponseWriter, r *http.Request) {

@@ -33,6 +33,8 @@ func WithEmailRestriction(restrict bool) Option {
 type handler struct {
 	svc           *account.Service
 	kb            KnowledgeBackend
+	qa            QABackend
+	authFn        func(*http.Request) (account.Caller, error)
 	restrictEmail bool
 }
 
@@ -40,7 +42,9 @@ type handler struct {
 func NewHandler(svc *account.Service, opts ...Option) http.Handler {
 	h := &handler{svc: svc}
 	for _, opt := range opts {
-		opt(h)
+		if opt != nil {
+			opt(h)
+		}
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/v1/auth/register", h.register)
@@ -49,11 +53,7 @@ func NewHandler(svc *account.Service, opts ...Option) http.Handler {
 	mux.HandleFunc("POST /api/v1/auth/password", h.changePassword)
 	mux.HandleFunc("GET /api/v1/me", h.me)
 
-	if h.kb == nil {
-		mux.HandleFunc("GET /api/v1/documents", h.documents)
-	} else {
-		h.registerKnowledgeRoutes(mux)
-	}
+	h.registerDomainRoutes(mux)
 	return withRequestID(mux)
 }
 
@@ -156,6 +156,9 @@ func (h *handler) documents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) caller(r *http.Request) (account.Caller, error) {
+	if h.authFn != nil {
+		return h.authFn(r)
+	}
 	raw, err := bearer(r)
 	if err != nil {
 		return account.Caller{}, err

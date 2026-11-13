@@ -139,6 +139,10 @@ type MemoryStore struct {
 	docTags      map[string]map[string]struct{}
 	tagDocs      map[string]map[string]struct{}
 	idempotency  map[string]idempotencyRecord
+	parents      map[string]parentChunkRecord
+	chunks       map[string]chunkRecord
+	docChunks    map[string][]string
+	docParents   map[string][]string
 }
 
 func NewMemoryStore(users UserStorageCoordinator, blobs BlobStore, clk clock.Clock) *MemoryStore {
@@ -161,6 +165,10 @@ func NewMemoryStore(users UserStorageCoordinator, blobs BlobStore, clk clock.Clo
 		docTags:         make(map[string]map[string]struct{}),
 		tagDocs:         make(map[string]map[string]struct{}),
 		idempotency:     make(map[string]idempotencyRecord),
+		parents:         make(map[string]parentChunkRecord),
+		chunks:          make(map[string]chunkRecord),
+		docChunks:       make(map[string][]string),
+		docParents:      make(map[string][]string),
 	}
 }
 
@@ -724,6 +732,7 @@ func (m *MemoryStore) Delete(ctx context.Context, owner, id string) error {
 		}
 		delete(m.docTags, id)
 	}
+	m.deleteDocChunksLocked(id)
 
 	return nil
 }
