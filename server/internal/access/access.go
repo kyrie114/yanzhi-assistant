@@ -18,6 +18,7 @@ type Principal struct {
 
 const (
 	ActList       = "list"
+	ActCreate     = "create"
 	ActOpen       = "open"
 	ActOpenGraph  = "open_graph"
 	ActAdmin      = "admin"
@@ -33,6 +34,11 @@ func Gate(p *Principal, action string, restrictEmail bool) Decision {
 	switch action {
 	case ActAdmin:
 		if p.Role != "admin" {
+			return Forbidden
+		}
+		return Allow
+	case ActCreate:
+		if p.Role != "user" {
 			return Forbidden
 		}
 		return Allow

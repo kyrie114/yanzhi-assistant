@@ -33,12 +33,14 @@ import (
 	"yanzhi/server/internal/provider"
 )
 
-const usage = "Usage: server --in-memory (or ACCOUNT_STORE=memory); JWT_SECRET must contain at least 32 bytes. Optional: HTTP_ADDR, BCRYPT_COST."
+const usage = "Usage: server --in-memory (or ACCOUNT_STORE=memory); JWT_SECRET must contain at least 32 bytes. Optional: HTTP_ADDR, BCRYPT_COST, FILES_ROOT, EMAIL_VERIFICATION_REQUIRED."
 
 type config struct {
-	addr       string
-	jwtSecret  []byte
-	bcryptCost int
+	addr          string
+	jwtSecret     []byte
+	bcryptCost    int
+	filesRoot     string
+	restrictEmail bool
 }
 
 // loadConfig is separate from startup so invalid settings cannot start a server.
@@ -82,14 +84,34 @@ func loadConfig(args []string, getenv func(string) string) (config, error) {
 			return config{}, fmt.Errorf("BCRYPT_COST must be an integer between %d and %d", bcrypt.MinCost, bcrypt.MaxCost)
 		}
 	}
-	return config{addr: addr, jwtSecret: []byte(secret), bcryptCost: cost}, nil
+	filesRoot := getenv("FILES_ROOT")
+	restrictEmail := getenv("EMAIL_VERIFICATION_REQUIRED") == "true"
+	return config{
+		addr:          addr,
+		jwtSecret:     []byte(secret),
+		bcryptCost:    cost,
+		filesRoot:     filesRoot,
+		restrictEmail: restrictEmail,
+	}, nil
 }
 
 func newHTTPServer(cfg config) *http.Server {
-	svc := account.NewService(account.NewMemoryStore(), nil, cfg.jwtSecret, cfg.bcryptCost)
+	accStore := account.NewMemoryStore()
+	svc := account.NewService(accStore, nil, cfg.jwtSecret, cfg.bcryptCost)
+	var blobStore knowledge.BlobStore
+	if cfg.filesRoot != "" {
+		blobStore = files.Store{Root: cfg.filesRoot}
+	} else {
+		blobStore = knowledge.NewMemoryBlobStore()
+	}
+	kbStore := knowledge.NewMemoryStore(accStore, blobStore, nil)
+	handler := httpapi.NewHandler(svc,
+		httpapi.WithKnowledge(kbStore),
+		httpapi.WithEmailRestriction(cfg.restrictEmail),
+	)
 	return &http.Server{
 		Addr:              cfg.addr,
-		Handler:           httpapi.NewHandler(svc),
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,

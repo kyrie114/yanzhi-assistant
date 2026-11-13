@@ -11,24 +11,49 @@ import (
 	"strings"
 
 	"yanzhi/server/internal/account"
+	"yanzhi/server/internal/apperr"
 )
 
 type requestIDKey struct{}
 
+type Option func(*handler)
+
+func WithKnowledge(kb KnowledgeBackend) Option {
+	return func(h *handler) {
+		h.kb = kb
+	}
+}
+
+func WithEmailRestriction(restrict bool) Option {
+	return func(h *handler) {
+		h.restrictEmail = restrict
+	}
+}
+
 type handler struct {
-	svc *account.Service
+	svc           *account.Service
+	kb            KnowledgeBackend
+	restrictEmail bool
 }
 
 // NewHandler 注册本切片的账户路由，以及用于检查令牌的资料列表。
-func NewHandler(svc *account.Service) http.Handler {
+func NewHandler(svc *account.Service, opts ...Option) http.Handler {
 	h := &handler{svc: svc}
+	for _, opt := range opts {
+		opt(h)
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/v1/auth/register", h.register)
 	mux.HandleFunc("POST /api/v1/auth/login", h.login)
 	mux.HandleFunc("POST /api/v1/auth/logout", h.logout)
 	mux.HandleFunc("POST /api/v1/auth/password", h.changePassword)
 	mux.HandleFunc("GET /api/v1/me", h.me)
-	mux.HandleFunc("GET /api/v1/documents", h.documents)
+
+	if h.kb == nil {
+		mux.HandleFunc("GET /api/v1/documents", h.documents)
+	} else {
+		h.registerKnowledgeRoutes(mux)
+	}
 	return withRequestID(mux)
 }
 
@@ -139,6 +164,39 @@ func (h *handler) caller(r *http.Request) (account.Caller, error) {
 }
 
 func (h *handler) writeErr(w http.ResponseWriter, r *http.Request, err error) {
+	if ae := apperr.As(err); ae != nil {
+		status := http.StatusInternalServerError
+		switch ae.Code {
+		case "UNAUTHENTICATED", "INVALID_CREDENTIALS":
+			status = http.StatusUnauthorized
+		case "FORBIDDEN", "EMAIL_UNVERIFIED":
+			status = http.StatusForbidden
+		case "NOT_FOUND":
+			status = http.StatusNotFound
+		case "EMAIL_TAKEN", "DUPLICATE_DOCUMENT", "DOCUMENT_NOT_READY", "NO_READY_DOCUMENTS", "RETRY_EXHAUSTED", "TAG_EXISTS", "MODEL_NOT_CONFIGURED", "REINDEX_CONFIRMATION_REQUIRED", "IDEMPOTENCY_CONFLICT", "STREAM_CLOSED":
+			status = http.StatusConflict
+		case "FILE_TOO_LARGE":
+			status = http.StatusRequestEntityTooLarge
+		case "UNSUPPORTED_MEDIA":
+			status = http.StatusUnsupportedMediaType
+		case "PASSWORD_WEAK", "FILE_ENCRYPTED", "TOO_MANY_PAGES", "STORAGE_QUOTA_EXCEEDED", "PAGE_OUT_OF_RANGE", "VALIDATION_ERROR", "UNSAFE_URL":
+			status = http.StatusUnprocessableEntity
+		case "MAIL_UNAVAILABLE", "MODEL_UNAVAILABLE", "DOCREADER_UNAVAILABLE":
+			status = http.StatusServiceUnavailable
+		}
+		details := ae.Details
+		if details == nil {
+			details = map[string]any{}
+		}
+		writeJSON(w, status, errorBody{
+			Code:      ae.Code,
+			Message:   ae.Message,
+			RequestID: requestID(r),
+			Details:   details,
+		})
+		return
+	}
+
 	var validation *account.ValidationError
 	switch {
 	case errors.As(err, &validation):

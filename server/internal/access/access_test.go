@@ -20,6 +20,12 @@ func TestGateOrder(t *testing.T) {
 	if Gate(admin, ActList, false) != Allow {
 		t.Fatal("admin list is empty, not 404")
 	}
+	if Gate(admin, ActCreate, false) != Forbidden {
+		t.Fatal("admin create should be forbidden")
+	}
+	if Gate(user, ActCreate, false) != Allow {
+		t.Fatal("user create should be allowed")
+	}
 	unverified := &Principal{Role: "user", Verified: false}
 	if Gate(unverified, ActUpload, false) != Allow {
 		t.Fatal("slice 1 leaves email restrict off")

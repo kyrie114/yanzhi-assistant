@@ -3,6 +3,8 @@ package account
 import (
 	"sync"
 	"time"
+
+	"yanzhi/server/internal/apperr"
 )
 
 // revokedToken 对应 revoked_tokens。退出只插入当前 jti。
@@ -88,4 +90,73 @@ func (m *MemoryStore) IsRevoked(jti string) bool {
 	defer m.mu.Unlock()
 	_, ok := m.revoked[jti]
 	return ok
+}
+
+func (m *MemoryStore) GetStorageBytes(userID string) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	user, ok := m.byID[userID]
+	if !ok {
+		return 0, ErrUnauthenticated
+	}
+	return user.StorageBytes, nil
+}
+
+func (m *MemoryStore) ReserveStorage(userID string, delta, quotaBytes int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	user, ok := m.byID[userID]
+	if !ok {
+		return ErrUnauthenticated
+	}
+	if user.StorageBytes+delta > quotaBytes {
+		return apperr.Quota(user.StorageBytes)
+	}
+	user.StorageBytes += delta
+	m.byID[userID] = user
+	return nil
+}
+
+func (m *MemoryStore) ReleaseStorage(userID string, delta int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	user, ok := m.byID[userID]
+	if !ok {
+		return ErrUnauthenticated
+	}
+	user.StorageBytes -= delta
+	if user.StorageBytes < 0 {
+		user.StorageBytes = 0
+	}
+	m.byID[userID] = user
+	return nil
+}
+
+func (m *MemoryStore) SetStorageBytes(userID string, n int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	user, ok := m.byID[userID]
+	if !ok {
+		return ErrUnauthenticated
+	}
+	user.StorageBytes = n
+	m.byID[userID] = user
+	return nil
+}
+
+func (m *MemoryStore) SetEmailVerified(userID string, at *time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	user, ok := m.byID[userID]
+	if !ok {
+		return ErrUnauthenticated
+	}
+	if at != nil {
+		t := *at
+		user.EmailVerifiedAt = &t
+	} else {
+		user.EmailVerifiedAt = nil
+	}
+	m.byID[userID] = user
+	return nil
 }

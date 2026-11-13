@@ -92,6 +92,40 @@ func (s *Service) Register(email, name, password string) (User, error) {
 	return user, nil
 }
 
+// CreateAdmin 创建系统管理员用户。
+func (s *Service) CreateAdmin(email, name, password string) (User, error) {
+	email, err := normalizeEmail(email)
+	if err != nil {
+		return User{}, err
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return User{}, &ValidationError{Details: map[string]string{"name": "姓名不能为空"}}
+	}
+	if !ValidPassword(password) {
+		return User{}, ErrWeakPassword
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), s.bcryptCost)
+	if err != nil {
+		return User{}, err
+	}
+	now := s.clock.Now().UTC()
+	user := User{
+		ID:              newUUID(),
+		Email:           email,
+		Name:            name,
+		PasswordHash:    string(hash),
+		Role:            roleAdmin,
+		EmailVerifiedAt: &now,
+		StorageBytes:    0,
+		CreatedAt:       now,
+	}
+	if err := s.store.Create(user); err != nil {
+		return User{}, err
+	}
+	return user, nil
+}
+
 // Login 校验邮箱和密码。邮箱不存在时仍做一次 bcrypt 比较，避免用响应时差区分两种失败。
 func (s *Service) Login(email, password string) (LoginResult, error) {
 	normalized, nerr := normalizeEmail(email)
