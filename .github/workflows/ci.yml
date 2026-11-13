@@ -25,9 +25,75 @@ jobs:
       - name: docreader pytest
         working-directory: docreader
         run: .venv/bin/pytest -q
-      - name: server go test
+      - name: server go vet and test
         working-directory: server
         env:
           DOCREADER_PY: ${{ github.workspace }}/docreader/.venv/bin/python
           DOCREADER_ROOT: ${{ github.workspace }}/docreader
-        run: go test ./...
+        run: |
+          go vet ./...
+          go test ./...
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: install dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: typecheck, test, and build
+        working-directory: frontend
+        run: |
+          npm run typecheck
+          npm test
+          npm run build
+
+  compose-smoke:
+    needs: [test, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: write .env
+        run: |
+          cat <<'EOF' > .env
+          POSTGRES_PASSWORD=ci-postgres-password-123456
+          JWT_SECRET=ci-jwt-secret-with-at-least-32-bytes-012345
+          AES_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          DOCREADER_TOKEN=ci-docreader-token-123456
+          BCRYPT_COST=4
+          EOF
+      - name: start compose stack
+        run: docker compose up -d --build
+      - name: wait for health
+        run: |
+          for i in $(seq 1 60); do
+            body=$(curl -fsS http://localhost/api/v1/health 2>/dev/null || true)
+            if echo "$body" | grep -q '"docreader":"serving"'; then
+              echo "healthy: $body"
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose logs
+          exit 1
+      - name: create admin and login
+        run: |
+          printf '%s\n' 'Admin12345' | docker compose exec -T server yzctl create-admin --email admin@example.com --name 管理员
+          status=$(curl -sS -o /tmp/login.json -w '%{http_code}' \
+            -X POST http://localhost/api/v1/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"admin@example.com","password":"Admin12345"}')
+          cat /tmp/login.json
+          test "$status" = "200"
+          grep -q '"access_token"' /tmp/login.json
+      - name: dump logs on failure
+        if: failure()
+        run: docker compose logs
+      - name: teardown compose stack
+        if: always()
+        run: docker compose down -v

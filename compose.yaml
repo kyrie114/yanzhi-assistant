@@ -1,0 +1,82 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: yanzhi
+      POSTGRES_USER: yanzhi
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U yanzhi -d yanzhi"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  docreader:
+    build:
+      context: .
+      dockerfile: docreader/Dockerfile
+    environment:
+      DOCREADER_LISTEN: 0.0.0.0:50051
+      DOCREADER_TOKEN: ${DOCREADER_TOKEN:?DOCREADER_TOKEN is required}
+    restart: unless-stopped
+
+  server:
+    build:
+      context: ./server
+    environment:
+      DATABASE_URL: postgres://yanzhi:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/yanzhi?sslmode=disable
+      HTTP_ADDR: :8080
+      DATA_DIR: /data
+      MIGRATIONS_DIR: /app/migrations
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      AES_KEY: ${AES_KEY:?AES_KEY is required}
+      DOCREADER_ADDR: docreader:50051
+      DOCREADER_TOKEN: ${DOCREADER_TOKEN:?DOCREADER_TOKEN is required}
+      BCRYPT_COST: ${BCRYPT_COST:-10}
+      EMAIL_VERIFICATION_REQUIRED: ${EMAIL_VERIFICATION_REQUIRED:-false}
+      INGEST_WORKERS: ${INGEST_WORKERS:-2}
+      GRAPH_WORKERS: ${GRAPH_WORKERS:-2}
+      EMBED_BATCH_SIZE: ${EMBED_BATCH_SIZE:-16}
+      CHUNK_MIN: ${CHUNK_MIN:-500}
+      CHUNK_MAX: ${CHUNK_MAX:-800}
+      CHUNK_OVERLAP: ${CHUNK_OVERLAP:-100}
+      PARENT_MIN: ${PARENT_MIN:-2000}
+      PARENT_MAX: ${PARENT_MAX:-3000}
+      TOP_K: ${TOP_K:-5}
+      RRF_K: ${RRF_K:-60}
+      BM25_K1: ${BM25_K1:-1.2}
+      BM25_B: ${BM25_B:-0.75}
+      DEFAULT_THRESHOLD: ${DEFAULT_THRESHOLD:-0.3}
+      MODEL_TIMEOUT_SECONDS: ${MODEL_TIMEOUT_SECONDS:-60}
+      DOCREADER_TIMEOUT_SECONDS: ${DOCREADER_TIMEOUT_SECONDS:-120}
+    volumes:
+      - serverdata:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      docreader:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/v1/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./frontend
+    ports:
+      - "${WEB_PORT:-80}:80"
+    depends_on:
+      server:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  serverdata:
