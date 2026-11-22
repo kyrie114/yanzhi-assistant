@@ -80,6 +80,75 @@ export interface ChunkDetail {
   parentText: string;
 }
 
+export interface GraphScope {
+  kbId?: string;
+  tagIds?: string[];
+}
+
+export interface GraphNode {
+  id: string;
+  name: string;
+  type: string;
+  documentId: string | null;
+}
+
+export interface GraphEdge {
+  id: string;
+  type: string;
+  source: string;
+  target: string;
+  suspended: boolean;
+}
+
+export interface GraphView {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  truncated: boolean;
+}
+
+export interface GraphSourcePage {
+  documentId: string;
+  title: string;
+  pageStart: number;
+}
+
+export interface GraphNodeDetail {
+  id: string;
+  name: string;
+  type: string;
+  documentId: string | null;
+  sources: GraphSourcePage[];
+}
+
+export interface GraphEvidence {
+  documentId: string;
+  chunkId: string;
+  pageStart: number;
+  sentence: string;
+}
+
+export interface GraphEdgeDetail {
+  id: string;
+  type: string;
+  source: string;
+  target: string;
+  evidence: GraphEvidence[];
+}
+
+export interface GraphStage {
+  name: string;
+  status: string;
+}
+
+export interface GraphExtraction {
+  graphStatus: GraphStatus | null;
+  failureReason: string | null;
+  manualRetryCount: number;
+  stages: GraphStage[];
+}
+
+export type UnresolvedReferences = string[];
+
 export type QAScope =
   | { type: 'all' }
   | { type: 'kb'; kbId: string }
@@ -364,6 +433,115 @@ export function parseChunkDetail(raw: unknown): ChunkDetail {
     pageStart: optNumber(obj, 'page_start', 1),
     parentText: optString(obj, 'parent_text', ''),
   };
+}
+
+function reqArray(obj: UnknownRecord, key: string): unknown[] {
+  const v = obj[key];
+  if (!Array.isArray(v)) {
+    throw new Error(`响应缺少数组字段：${key}`);
+  }
+  return v;
+}
+
+function parseGraphNode(raw: unknown): GraphNode {
+  const obj = expectRecord(raw, 'GraphNode');
+  return {
+    id: reqString(obj, 'id'),
+    name: reqString(obj, 'name'),
+    type: reqString(obj, 'type'),
+    documentId: optNullableString(obj, 'document_id'),
+  };
+}
+
+function parseGraphEdge(raw: unknown): GraphEdge {
+  const obj = expectRecord(raw, 'GraphEdge');
+  return {
+    id: reqString(obj, 'id'),
+    type: reqString(obj, 'type'),
+    source: reqString(obj, 'source'),
+    target: reqString(obj, 'target'),
+    suspended: optBoolean(obj, 'suspended', false),
+  };
+}
+
+export function parseGraphView(raw: unknown): GraphView {
+  const obj = expectRecord(raw, 'GraphView');
+  return {
+    nodes: reqArray(obj, 'nodes').map(parseGraphNode),
+    edges: reqArray(obj, 'edges').map(parseGraphEdge),
+    truncated: optBoolean(obj, 'truncated', false),
+  };
+}
+
+function parseGraphSourcePage(raw: unknown): GraphSourcePage {
+  const obj = expectRecord(raw, 'GraphSourcePage');
+  return {
+    documentId: reqString(obj, 'document_id'),
+    title: reqString(obj, 'title'),
+    pageStart: optNumber(obj, 'page_start', 0),
+  };
+}
+
+export function parseGraphNodeDetail(raw: unknown): GraphNodeDetail {
+  const obj = expectRecord(raw, 'GraphNodeDetail');
+  return {
+    id: reqString(obj, 'id'),
+    name: reqString(obj, 'name'),
+    type: reqString(obj, 'type'),
+    documentId: optNullableString(obj, 'document_id'),
+    sources: reqArray(obj, 'sources').map(parseGraphSourcePage),
+  };
+}
+
+function parseGraphEvidence(raw: unknown): GraphEvidence {
+  const obj = expectRecord(raw, 'GraphEvidence');
+  return {
+    documentId: reqString(obj, 'document_id'),
+    chunkId: reqString(obj, 'chunk_id'),
+    pageStart: optNumber(obj, 'page_start', 0),
+    sentence: reqString(obj, 'sentence'),
+  };
+}
+
+export function parseGraphEdgeDetail(raw: unknown): GraphEdgeDetail {
+  const obj = expectRecord(raw, 'GraphEdgeDetail');
+  return {
+    id: reqString(obj, 'id'),
+    type: reqString(obj, 'type'),
+    source: reqString(obj, 'source'),
+    target: reqString(obj, 'target'),
+    evidence: reqArray(obj, 'evidence').map(parseGraphEvidence),
+  };
+}
+
+function parseGraphStage(raw: unknown): GraphStage {
+  const obj = expectRecord(raw, 'GraphStage');
+  return {
+    name: reqString(obj, 'name'),
+    status: reqString(obj, 'status'),
+  };
+}
+
+export function parseGraphExtraction(raw: unknown): GraphExtraction {
+  const obj = expectRecord(raw, 'GraphExtraction');
+  return {
+    graphStatus: parseGraphStatus(obj.graph_status),
+    failureReason: optNullableString(obj, 'failure_reason'),
+    manualRetryCount: optNumber(obj, 'manual_retry_count', 0),
+    stages: reqArray(obj, 'stages').map(parseGraphStage),
+  };
+}
+
+export function parseUnresolvedReferences(raw: unknown): UnresolvedReferences {
+  if (!Array.isArray(raw)) {
+    throw new Error('未匹配引用格式无效');
+  }
+  return raw.map((item) => {
+    if (typeof item !== 'string') {
+      throw new Error('未匹配引用格式无效');
+    }
+    return item;
+  });
 }
 
 export function parseCitation(raw: unknown): Citation {

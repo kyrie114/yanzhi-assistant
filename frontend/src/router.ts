@@ -46,9 +46,27 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, role: '注册用户' },
   },
   {
+    path: '/kbs/:kbId/graph',
+    name: 'kb-graph',
+    component: () => import('./pages/GraphView.vue'),
+    meta: { requiresAuth: true, role: '注册用户' },
+  },
+  {
+    path: '/graph',
+    name: 'graph',
+    component: () => import('./pages/GraphView.vue'),
+    meta: { requiresAuth: true, role: '注册用户' },
+  },
+  {
     path: '/documents/:id',
     name: 'document-detail',
     component: () => import('./pages/DocumentDetailView.vue'),
+    meta: { requiresAuth: true, role: '注册用户' },
+  },
+  {
+    path: '/documents/:id/graph',
+    name: 'document-graph',
+    component: () => import('./pages/GraphView.vue'),
     meta: { requiresAuth: true, role: '注册用户' },
   },
   {

@@ -153,5 +153,5 @@ npm run build
 ## 当前已知限制
 
 - `--in-memory` 模式不启动入库 worker。上传 PDF 后资料状态停留在「待处理」，不会切块、向量化或参与知识库问答。完整入库与问答链路需使用 Docker Compose 或 PostgreSQL 模式。
-- 知识图谱页面、按页对照阅读、深度查阅、Wiki、FAQ、系统日志、邮箱验证与找回密码界面及对应 HTTP 路由尚未开放。
+- 按页对照阅读、深度查阅、Wiki、FAQ、系统日志、邮箱验证与找回密码界面及对应 HTTP 路由尚未开放。
 - `docreader` 当前仅解析带文本层的 PDF 文件，暂不支持扫描件 OCR，也不支持 Office、网页、Markdown、图片或音频格式。

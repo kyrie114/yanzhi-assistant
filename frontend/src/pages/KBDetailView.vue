@@ -24,6 +24,13 @@ const searchQuery = ref('');
 const activeQuery = ref('');
 const selectedTagIds = ref<string[]>([]);
 
+function tagQuery(ids: string[]): { tag_id: string[] } | Record<string, never> {
+  if (ids.length === 0) {
+    return {};
+  }
+  return { tag_id: ids };
+}
+
 const loading = ref(true);
 const loadError = ref('');
 
@@ -270,6 +277,9 @@ onBeforeUnmount(() => {
       </div>
       <div class="form-inline">
         <RouterLink class="btn" :to="{ path: '/qa', query: { kbId } }">在此库提问</RouterLink>
+        <RouterLink class="btn" :to="{ path: `/kbs/${kbId}/graph`, query: tagQuery(selectedTagIds) }">
+          查看图谱
+        </RouterLink>
         <RouterLink class="btn" :to="`/kbs/${kbId}/settings`">知识库设置</RouterLink>
       </div>
     </div>
