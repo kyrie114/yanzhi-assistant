@@ -17,14 +17,14 @@ import (
 )
 
 type Runner struct {
-	Pool      *pgxpool.Pool
-	Files     files.Store
-	Reader    *docreader.Client
-	Models    provider.Store
-	AI        provider.Client
-	Chunk     Config
+	Pool       *pgxpool.Pool
+	Files      files.Store
+	Reader     *docreader.Client
+	Models     provider.Store
+	AI         provider.Client
+	Chunk      Config
 	EmbedBatch int
-	Timeout   time.Duration
+	Timeout    time.Duration
 }
 
 func (r Runner) Run(ctx context.Context, job jobs.Job) error {
@@ -336,12 +336,17 @@ func (r Runner) finishReady(ctx context.Context, job jobs.Job) error {
 	if err != nil {
 		return err
 	}
+	tx, err := r.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
 	var graphStatus *string
 	if enabled {
 		ready := "pending"
 		graphStatus = &ready
 	}
-	tag, err := r.Pool.Exec(ctx, `
+	tag, err := tx.Exec(ctx, `
 		UPDATE documents
 		SET status = 'ready', failure_reason = NULL, graph_status = $2, updated_at = now()
 		WHERE id = $1 AND cancel_requested = false`, db.MustUUID(job.TargetID), graphStatus)
@@ -352,9 +357,11 @@ func (r Runner) finishReady(ctx context.Context, job jobs.Job) error {
 		return jobs.ErrCancelled
 	}
 	if enabled {
-		_ = jobs.Enqueue(ctx, r.Pool, "graph_extract", job.OwnerID, job.TargetID, job.RequestID, 80, 1)
+		if err := jobs.InsertTx(ctx, tx, "graph_extract", job.OwnerID, job.TargetID, job.RequestID, 80, 1); err != nil {
+			return err
+		}
 	}
-	return nil
+	return tx.Commit(ctx)
 }
 
 func (r Runner) fail(ctx context.Context, job jobs.Job, reason string) error {

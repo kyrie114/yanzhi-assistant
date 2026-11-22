@@ -22,18 +22,47 @@ type Job struct {
 var ErrCancelled = errors.New("cancelled")
 
 func Enqueue(ctx context.Context, pool *pgxpool.Pool, kind, owner, target, request string, priority, attempt int) error {
-	if attempt < 1 {
-		attempt = 1
-	}
-	_, err := pool.Exec(ctx, `
-		INSERT INTO jobs (id, kind, owner_id, target_id, request_id, priority, attempt, status, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', now())`,
-		db.MustUUID(db.NewID()), kind, db.MustUUID(owner), db.MustUUID(target), db.MustUUID(request), priority, attempt)
-	var pe *pgconn.PgError
-	if errors.As(err, &pe) && pe.Code == "23505" {
+	err := insertJob(ctx, pool, kind, owner, target, request, priority, attempt)
+	if uniqueJob(err) {
 		return nil
 	}
 	return err
+}
+
+func InsertTx(ctx context.Context, tx pgx.Tx, kind, owner, target, request string, priority, attempt int) error {
+	if _, err := tx.Exec(ctx, "SAVEPOINT enqueue_job"); err != nil {
+		return err
+	}
+	err := insertJob(ctx, tx, kind, owner, target, request, priority, attempt)
+	if uniqueJob(err) {
+		_, rbErr := tx.Exec(ctx, "ROLLBACK TO SAVEPOINT enqueue_job")
+		return rbErr
+	}
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, "RELEASE SAVEPOINT enqueue_job")
+	return err
+}
+
+type jobExec interface {
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+}
+
+func insertJob(ctx context.Context, exec jobExec, kind, owner, target, request string, priority, attempt int) error {
+	if attempt < 1 {
+		attempt = 1
+	}
+	_, err := exec.Exec(ctx, `
+		INSERT INTO jobs (id, kind, owner_id, target_id, request_id, priority, attempt, status, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', now())`,
+		db.MustUUID(db.NewID()), kind, db.MustUUID(owner), db.MustUUID(target), db.MustUUID(request), priority, attempt)
+	return err
+}
+
+func uniqueJob(err error) bool {
+	var pe *pgconn.PgError
+	return errors.As(err, &pe) && pe.Code == "23505"
 }
 
 func Claim(ctx context.Context, pool *pgxpool.Pool, kinds []string) (*Job, error) {
