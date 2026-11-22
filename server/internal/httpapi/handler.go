@@ -34,6 +34,8 @@ type handler struct {
 	svc           *account.Service
 	kb            KnowledgeBackend
 	qa            QABackend
+	graphs        GraphBrowse
+	graphRetry    GraphRetry
 	authFn        func(*http.Request) (account.Caller, error)
 	healthProbe   func(context.Context) bool
 	restrictEmail bool

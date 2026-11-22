@@ -268,6 +268,7 @@ func serveDatabase() error {
 			library,
 			models,
 			httpapi.WithQA(qaSvc),
+			httpapi.WithGraph(graphSvc),
 			httpapi.WithHealthProbe(readerClient.Healthy),
 			httpapi.WithEmailRestriction(cfg.EmailRestrict),
 		),

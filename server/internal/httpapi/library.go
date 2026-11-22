@@ -13,7 +13,8 @@ import (
 
 func NewLibraryHandler(accounts *identity.Service, library knowledge.Service, models provider.Store, opts ...Option) http.Handler {
 	domain := &handler{
-		kb: library,
+		kb:         library,
+		graphRetry: library,
 		authFn: func(r *http.Request) (account.Caller, error) {
 			raw, err := bearer(r)
 			if err != nil {

@@ -3,6 +3,10 @@ import {
   parseChunkDetail,
   parseDoc,
   parseDocPage,
+  parseGraphEdgeDetail,
+  parseGraphExtraction,
+  parseGraphNodeDetail,
+  parseGraphView,
   parseHealthStatus,
   parseKB,
   parseKBList,
@@ -15,9 +19,15 @@ import {
   parseQASessionPage,
   parseTag,
   parseTagList,
+  parseUnresolvedReferences,
   serializeScope,
   type ChunkDetail,
   type Doc,
+  type GraphEdgeDetail,
+  type GraphExtraction,
+  type GraphNodeDetail,
+  type GraphScope,
+  type GraphView,
   type HealthStatus,
   type KB,
   type LoginResult,
@@ -29,6 +39,7 @@ import {
   type QAScope,
   type QASession,
   type Tag,
+  type UnresolvedReferences,
 } from './types';
 
 function noop(): void {}
@@ -201,6 +212,52 @@ export function getChunkDetail(docId: string, chunkId: string): Promise<ChunkDet
   return request(
     `/api/v1/documents/${encodeURIComponent(docId)}/chunks/${encodeURIComponent(chunkId)}`,
     parseChunkDetail,
+  );
+}
+
+export function getGraph(scope: GraphScope): Promise<GraphView> {
+  const query = new URLSearchParams();
+  if (scope.kbId) {
+    query.set('kb_id', scope.kbId);
+  }
+  for (const tagId of scope.tagIds ?? []) {
+    query.append('tag_id', tagId);
+  }
+  const qs = query.toString();
+  return request(qs ? `/api/v1/graph?${qs}` : '/api/v1/graph', parseGraphView);
+}
+
+export function getDocumentGraph(documentId: string): Promise<GraphView> {
+  return request(`/api/v1/documents/${encodeURIComponent(documentId)}/graph`, parseGraphView);
+}
+
+export function getGraphNode(id: string): Promise<GraphNodeDetail> {
+  return request(`/api/v1/graph/nodes/${encodeURIComponent(id)}`, parseGraphNodeDetail);
+}
+
+export function getGraphEdge(id: string): Promise<GraphEdgeDetail> {
+  return request(`/api/v1/graph/edges/${encodeURIComponent(id)}`, parseGraphEdgeDetail);
+}
+
+export function getGraphExtraction(documentId: string): Promise<GraphExtraction> {
+  return request(
+    `/api/v1/documents/${encodeURIComponent(documentId)}/graph-extraction`,
+    parseGraphExtraction,
+  );
+}
+
+export function retryGraphExtraction(documentId: string): Promise<void> {
+  return request(
+    `/api/v1/documents/${encodeURIComponent(documentId)}/graph-extraction/retries`,
+    noop,
+    { method: 'POST' },
+  );
+}
+
+export function getUnresolvedReferences(documentId: string): Promise<UnresolvedReferences> {
+  return request(
+    `/api/v1/documents/${encodeURIComponent(documentId)}/unresolved-references`,
+    parseUnresolvedReferences,
   );
 }
 

@@ -206,7 +206,9 @@ async function onConfirmDelete(): Promise<void> {
         <div class="form-inline">
           <h1 class="page-title">{{ doc.title }}</h1>
           <IngestStatus :status="doc.status" />
-          <span v-if="doc.graphStatus" class="badge">图谱：{{ doc.graphStatus }}</span>
+          <RouterLink class="badge" :to="`/documents/${doc.id}/graph`">
+            {{ doc.graphStatus ? `图谱：${doc.graphStatus}` : '图谱' }}
+          </RouterLink>
         </div>
         <div class="form-inline">
           <button type="button" class="btn btn-primary" :disabled="downloading" @click="onDownload">

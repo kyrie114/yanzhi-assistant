@@ -63,7 +63,10 @@ onMounted(loadAll);
   <div>
     <div class="page-head">
       <h1 class="page-title">我的知识库</h1>
-      <RouterLink class="btn btn-primary" to="/qa">进入问答</RouterLink>
+      <div class="form-inline">
+        <RouterLink class="btn" to="/graph">全部图谱</RouterLink>
+        <RouterLink class="btn btn-primary" to="/qa">进入问答</RouterLink>
+      </div>
     </div>
 
     <div v-if="loadError" class="alert alert-error">{{ loadError }}</div>
