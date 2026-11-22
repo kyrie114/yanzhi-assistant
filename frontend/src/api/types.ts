@@ -532,6 +532,27 @@ export function parseGraphExtraction(raw: unknown): GraphExtraction {
   };
 }
 
+export interface SuggestedQuestions {
+  questions: string[];
+  action: string;
+  status: string | null;
+}
+
+export function parseSuggestedQuestions(raw: unknown): SuggestedQuestions {
+  const obj = expectRecord(raw, 'SuggestedQuestions');
+  const questions = reqArray(obj, 'questions').map((item) => {
+    if (typeof item !== 'string' || item.trim() === '') {
+      throw new Error('推荐问题格式无效');
+    }
+    return item;
+  });
+  return {
+    questions,
+    action: optString(obj, 'action', 'fill'),
+    status: optNullableString(obj, 'status'),
+  };
+}
+
 export function parseUnresolvedReferences(raw: unknown): UnresolvedReferences {
   if (!Array.isArray(raw)) {
     throw new Error('未匹配引用格式无效');

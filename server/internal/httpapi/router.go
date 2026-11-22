@@ -23,6 +23,9 @@ func (h *handler) registerDomainRoutes(mux *http.ServeMux) {
 	if h.graphs != nil && h.graphRetry != nil {
 		h.registerGraphRoutes(mux)
 	}
+	if h.suggest != nil {
+		h.registerSuggestionRoutes(mux)
+	}
 }
 
 func (h *handler) authorize(w http.ResponseWriter, r *http.Request, act string) (account.Caller, bool) {

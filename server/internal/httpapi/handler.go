@@ -36,6 +36,7 @@ type handler struct {
 	qa            QABackend
 	graphs        GraphBrowse
 	graphRetry    GraphRetry
+	suggest       suggestionAPI
 	authFn        func(*http.Request) (account.Caller, error)
 	healthProbe   func(context.Context) bool
 	restrictEmail bool

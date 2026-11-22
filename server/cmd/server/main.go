@@ -34,6 +34,7 @@ import (
 	"yanzhi/server/internal/provider"
 	"yanzhi/server/internal/qa"
 	"yanzhi/server/internal/retrieval"
+	"yanzhi/server/internal/suggest"
 )
 
 const usage = "Usage: server --in-memory (or ACCOUNT_STORE=memory); JWT_SECRET must contain at least 32 bytes. Optional: HTTP_ADDR, BCRYPT_COST, FILES_ROOT, EMAIL_VERIFICATION_REQUIRED."
@@ -192,6 +193,12 @@ func main() {
 	}
 }
 
+func suggestMemory(models provider.Store, ai provider.Client, timeout time.Duration) *suggest.Memory {
+	mem := suggest.NewMemory()
+	mem.UseModel(suggest.ChatModel{Models: models, AI: ai, Timeout: timeout})
+	return mem
+}
+
 func serveDatabase() error {
 	cfg, err := pconfig.Load()
 	if err != nil {
@@ -269,6 +276,7 @@ func serveDatabase() error {
 			models,
 			httpapi.WithQA(qaSvc),
 			httpapi.WithGraph(graphSvc),
+			httpapi.WithSuggestions(httpapi.NewLiveSuggestions(suggestMemory(models, aiClient, cfg.DocTimeout), library)),
 			httpapi.WithHealthProbe(readerClient.Healthy),
 			httpapi.WithEmailRestriction(cfg.EmailRestrict),
 		),

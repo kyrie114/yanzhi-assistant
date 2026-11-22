@@ -9,6 +9,7 @@ import {
   listKBs,
   listQASessions,
   listTags,
+  getSuggestedQuestions,
   patchQASession,
   resumeQATurnStream,
   startQATurnStream,
@@ -56,6 +57,8 @@ const selectedTagIds = ref<string[]>([]);
 const selectedDocIds = ref<string[]>([]);
 
 const questionInput = ref('');
+const suggestions = ref<string[]>([]);
+const askedQuestion = ref('');
 
 interface LiveTurnView {
   question: string;
@@ -84,6 +87,44 @@ const stageText = computed(() => {
 });
 
 const readyDocs = computed(() => allDocs.value.filter((d) => d.status === '已完成'));
+
+const suggestScope = computed(() => {
+  if (scopeType.value === 'kb' && selectedKbId.value) {
+    return { kind: 'kb' as const, id: selectedKbId.value };
+  }
+  const onlyDoc = selectedDocIds.value[0];
+  if (scopeType.value === 'documents' && selectedDocIds.value.length === 1 && onlyDoc) {
+    return { kind: 'document' as const, id: onlyDoc };
+  }
+  return null;
+});
+
+watch([suggestScope, askedQuestion], () => {
+  void loadSuggestions();
+});
+
+async function loadSuggestions(): Promise<void> {
+  const scope = suggestScope.value;
+  if (!scope) {
+    suggestions.value = [];
+    return;
+  }
+  try {
+    const result = await getSuggestedQuestions(scope, askedQuestion.value);
+    if (suggestScope.value?.id !== scope.id || suggestScope.value.kind !== scope.kind) {
+      return;
+    }
+    suggestions.value = result.questions;
+  } catch {
+    if (suggestScope.value?.id === scope.id) {
+      suggestions.value = [];
+    }
+  }
+}
+
+function useSuggestion(question: string): void {
+  questionInput.value = question;
+}
 
 async function refreshSessions(): Promise<void> {
   try {
@@ -318,6 +359,7 @@ async function onAsk(): Promise<void> {
     if (liveTurn.value) {
       const finalPhase = liveTurn.value.state.phase;
       if (finalPhase === 'done' || finalPhase === 'refused') {
+        askedQuestion.value = question;
         if (turnId && liveTurn.value.state.retrieval.length > 0) {
           retrievalHistory.value = {
             ...retrievalHistory.value,
@@ -606,6 +648,22 @@ onBeforeUnmount(() => {
 
         <CitationList :citations="liveTurn.state.citations" />
       </article>
+
+      <div v-if="suggestions.length > 0" class="card" style="margin-bottom: 0">
+        <h2 class="card-title">推荐问题</h2>
+        <div class="tag-chip-list">
+          <button
+            v-for="item in suggestions"
+            :key="item"
+            type="button"
+            class="btn btn-sm"
+            :disabled="isStreaming"
+            @click="useSuggestion(item)"
+          >
+            {{ item }}
+          </button>
+        </div>
+      </div>
 
       <form class="card" style="margin-bottom: 0" @submit.prevent="onAsk">
         <div v-if="askError" class="alert alert-error">{{ askError }}</div>

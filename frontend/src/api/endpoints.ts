@@ -7,6 +7,7 @@ import {
   parseGraphExtraction,
   parseGraphNodeDetail,
   parseGraphView,
+  parseSuggestedQuestions,
   parseHealthStatus,
   parseKB,
   parseKBList,
@@ -28,6 +29,7 @@ import {
   type GraphNodeDetail,
   type GraphScope,
   type GraphView,
+  type SuggestedQuestions,
   type HealthStatus,
   type KB,
   type LoginResult,
@@ -206,6 +208,18 @@ export function deleteDocument(docId: string): Promise<void> {
 
 export function downloadDocumentFile(docId: string): Promise<{ blob: Blob; filename: string }> {
   return downloadFileBlob(`/api/v1/documents/${encodeURIComponent(docId)}/file`);
+}
+
+export function getSuggestedQuestions(
+  scope: { kind: 'kb' | 'document'; id: string },
+  asked = '',
+): Promise<SuggestedQuestions> {
+  const path =
+    scope.kind === 'kb'
+      ? `/api/v1/kbs/${encodeURIComponent(scope.id)}/suggested-questions`
+      : `/api/v1/documents/${encodeURIComponent(scope.id)}/suggested-questions`;
+  const query = asked.trim() ? `?asked=${encodeURIComponent(asked.trim())}` : '';
+  return request(path + query, parseSuggestedQuestions);
 }
 
 export function getChunkDetail(docId: string, chunkId: string): Promise<ChunkDetail> {
