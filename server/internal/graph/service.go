@@ -18,9 +18,9 @@ import (
 )
 
 type Service struct {
-	Pool *pgxpool.Pool
-	AI   provider.Client
-	Models provider.Store
+	Pool    *pgxpool.Pool
+	AI      provider.Client
+	Models  provider.Store
 	Timeout time.Duration
 }
 
@@ -89,11 +89,24 @@ func (s Service) Extract(ctx context.Context, job jobs.Job) error {
 			b.WriteString(batch[i].Text)
 			b.WriteString("\n<<<END>>>\n")
 		}
-		callCtx, cancel := context.WithTimeout(ctx, s.timeout())
-		text, _, err := s.AI.Complete(callCtx, remote, prompts.Render(prompts.GraphExtract, map[string]string{"chunks": b.String()}), "只输出 JSON")
-		cancel()
+		prompt := prompts.Render(prompts.GraphExtract, map[string]string{"chunks": b.String()})
+		text, err := attemptCall(func() (string, error) {
+			callCtx, cancel := context.WithTimeout(ctx, s.timeout())
+			defer cancel()
+			body, _, callErr := s.AI.Complete(callCtx, remote, prompt, "只输出 JSON")
+			if callErr != nil {
+				return "", callErr
+			}
+			if _, _, decErr := decodeExtraction(body); decErr != nil {
+				return "", errUnparsed
+			}
+			return body, nil
+		})
 		if err != nil {
 			_ = jobs.Stage(ctx, s.Pool, job.ID, "extract", "failed")
+			if errors.Is(err, errUnparsed) {
+				return s.fail(ctx, job.TargetID, "抽取结果无法解析")
+			}
 			return s.fail(ctx, job.TargetID, apperr.ErrModelDown.Message)
 		}
 		ents, rels, err := decodeExtraction(text)

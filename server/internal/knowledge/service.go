@@ -267,10 +267,10 @@ func (s Service) Upload(ctx context.Context, owner, kbID string, meta UploadMeta
 		if tag.RowsAffected() == 0 {
 			return UploadResult{}, apperr.ErrDuplicateDoc
 		}
-		if err := tx.Commit(ctx); err != nil {
+		if err := jobs.InsertTx(ctx, tx, "ingest", owner, existing.ID, req, 10, 1); err != nil {
 			return UploadResult{}, err
 		}
-		if err := jobs.Enqueue(ctx, s.Pool, "ingest", owner, existing.ID, req, 10, 1); err != nil {
+		if err := tx.Commit(ctx); err != nil {
 			return UploadResult{}, err
 		}
 		if err := s.remember(ctx, owner, meta.IdempotencyKey, hash, existing.ID, 200); err != nil {
@@ -595,7 +595,15 @@ func (s Service) Retry(ctx context.Context, owner, id, requestID string) error {
 	if n >= 3 {
 		return apperr.ErrRetryExhausted
 	}
-	tag, err := s.Pool.Exec(ctx, `
+	if _, ok := db.UUID(requestID); !ok {
+		requestID = db.NewID()
+	}
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	tag, err := tx.Exec(ctx, `
 		UPDATE documents SET status = 'pending', failure_reason = NULL, cancel_requested = false,
 			manual_retry_count = manual_retry_count + 1, updated_at = now()
 		WHERE id = $1 AND owner_id = $2 AND status = 'failed' AND manual_retry_count < 3`, db.MustUUID(id), db.MustUUID(owner))
@@ -605,10 +613,10 @@ func (s Service) Retry(ctx context.Context, owner, id, requestID string) error {
 	if tag.RowsAffected() == 0 {
 		return apperr.ErrRetryExhausted
 	}
-	if _, ok := db.UUID(requestID); !ok {
-		requestID = db.NewID()
+	if err := jobs.InsertTx(ctx, tx, "ingest", owner, id, requestID, 10, n+1); err != nil {
+		return err
 	}
-	return jobs.Enqueue(ctx, s.Pool, "ingest", owner, id, requestID, 10, n+1)
+	return tx.Commit(ctx)
 }
 
 func (s Service) RetryGraph(ctx context.Context, owner, id, requestID string) error {
@@ -633,7 +641,15 @@ func (s Service) RetryGraph(ctx context.Context, owner, id, requestID string) er
 	if n >= 3 {
 		return apperr.ErrRetryExhausted
 	}
-	tag, err := s.Pool.Exec(ctx, `
+	if _, ok := db.UUID(requestID); !ok {
+		requestID = db.NewID()
+	}
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	tag, err := tx.Exec(ctx, `
 		UPDATE documents SET graph_status = 'pending', graph_failure_reason = NULL,
 			graph_manual_retry_count = graph_manual_retry_count + 1, updated_at = now()
 		WHERE id = $1 AND graph_status = 'failed' AND graph_manual_retry_count < 3`, db.MustUUID(id))
@@ -643,10 +659,10 @@ func (s Service) RetryGraph(ctx context.Context, owner, id, requestID string) er
 	if tag.RowsAffected() == 0 {
 		return apperr.ErrRetryExhausted
 	}
-	if _, ok := db.UUID(requestID); !ok {
-		requestID = db.NewID()
+	if err := jobs.InsertTx(ctx, tx, "graph_extract", owner, id, requestID, 80, n+1); err != nil {
+		return err
 	}
-	return jobs.Enqueue(ctx, s.Pool, "graph_extract", owner, id, requestID, 80, n+1)
+	return tx.Commit(ctx)
 }
 
 func (s Service) Ingest(ctx context.Context, owner, id string) (map[string]any, error) {
