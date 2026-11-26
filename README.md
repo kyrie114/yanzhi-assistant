@@ -118,7 +118,14 @@ go vet ./...
 go test ./...
 ```
 
-如需运行依赖 PostgreSQL 与 `docreader` 子进程的集成测试，请额外配置 `TEST_DATABASE_URL`、`DOCREADER_PY` 与 `DOCREADER_ROOT`。
+如需运行依赖 PostgreSQL 与 `docreader` 子进程的集成测试，请额外配置 `TEST_DATABASE_URL`、`DOCREADER_PY` 与 `DOCREADER_ROOT`。例如（与 CI 一致）：
+
+```bash
+TEST_DATABASE_URL="postgres://yanzhi:ci-test-password@127.0.0.1:5432/yanzhi_test?sslmode=disable" \
+DOCREADER_PY="$(pwd)/../docreader/.venv/bin/python" \
+DOCREADER_ROOT="$(pwd)/../docreader" \
+go test -v -count=1 ./...
+```
 
 ### Python docreader
 
@@ -152,6 +159,9 @@ npm run build
 
 ## 当前已知限制
 
-- `--in-memory` 模式不启动入库 worker。上传 PDF 后资料状态停留在「待处理」，不会切块、向量化或参与知识库问答。完整入库与问答链路需使用 Docker Compose 或 PostgreSQL 模式。
+- `--in-memory` 模式仅用于本地无数据库开发与交互验证：
+  - 不启动入库与图谱抽取 worker，上传 PDF 后资料状态停留在「待处理」，不会切块、向量化或生成图谱。
+  - 未挂载模型配置（`/api/v1/admin/model-configs*`）、知识图谱（`/api/v1/graph*`、`/api/v1/documents/*/graph*`）与推荐问题（`/api/v1/*/suggested-questions`）路由（后端返回 `404`，前端界面会降级提示或隐藏，不误报错误）。
+  - 完整入库、问答与知识图谱链路需使用 Docker Compose 或 PostgreSQL 模式。
 - 按页对照阅读、深度查阅、Wiki、FAQ、系统日志、邮箱验证与找回密码界面及对应 HTTP 路由尚未开放。
 - `docreader` 当前仅解析带文本层的 PDF 文件，暂不支持扫描件 OCR，也不支持 Office、网页、Markdown、图片或音频格式。

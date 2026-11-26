@@ -3,14 +3,14 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | YZ-RTM-001 |
-| 版本 | 1.3 |
+| 版本 | 1.4 |
 | 状态 | 评审稿 |
-| 日期 | 2026-11-13 |
+| 日期 | 2026-11-26 |
 | 关联文档 | [requirements.md](../docs/requirements/requirements.md)、[user-stories.md](../docs/requirements/user-stories.md)、[acceptance-criteria.md](../docs/requirements/acceptance-criteria.md) |
 
 一行对应一组功能需求与用户故事。一个故事关联多项功能时拆成多行，每条验收标准只出现在一行中。优先级与用户故事一致。
 
-1.1（2026-10-11）建立本表时状态均为待开发。1.2（2026-10-30）只把 FR-04 改为 PDF 文本层已可解析。1.3（2026-11-13）补充内存模式 FR-01、FR-02、FR-03、FR-04（AC-04-04）、FR-05 功能与接口测试（NFR-01 并发压测 AC-01-08、AC-02-11、AC-05-06 待开发；FR-04 扫描件和入库端到端未做）。
+1.1（2026-10-11）建立本表时状态均为待开发。1.2（2026-10-30）只把 FR-04 改为 PDF 文本层已可解析。1.3（2026-11-13）补充内存模式 FR-01、FR-02、FR-03、FR-04（AC-04-04）、FR-05 功能与接口测试（NFR-01 并发压测 AC-01-08、AC-02-11、AC-05-06 待开发；FR-04 扫描件和入库端到端未做）。1.4（2026-11-26）对齐已落地功能与实际测试路径：补充 FR-04 文本层入库链路、FR-06/FR-07/FR-08/FR-09/FR-10/FR-11/FR-13、FR-12 父子块及 NFR-12 部署验证状态。
 
 验证方式：主服务使用 Go 测试，外部模型使用替身；docreader 使用 pytest；浏览器端到端使用 Playwright；评测和页码抽检由人完成。
 
@@ -22,18 +22,18 @@
 | 2 | FR-02 | US-08 | AC-08-01, AC-08-03, AC-08-04, AC-08-05 | 必须 | 接口 | server/internal/access/access_test.go、server/internal/httpapi/knowledge_test.go | 已完成 |
 | 3 | FR-03 | US-02 | AC-02-01, AC-02-02, AC-02-03, AC-02-04, AC-02-05, AC-02-06, AC-02-07, AC-02-08, AC-02-09, AC-02-10, AC-02-11, AC-02-12 | 必须 | 接口、单元 | server/internal/httpapi/knowledge_test.go、server/internal/knowledge/memory_test.go | 已完成（AC-02-11 压测未做） |
 | 4 | FR-03 | US-04 | AC-04-01, AC-04-02, AC-04-03 | 必须 | 接口、单元 | server/internal/httpapi/knowledge_test.go、server/internal/knowledge/memory_test.go | 已完成 |
-| 5 | FR-04 | US-03 | AC-03-01, AC-03-02, AC-03-03, AC-03-04, AC-03-05, AC-03-06, AC-03-07, AC-03-08 | 必须 | 接口、docreader 单元、端到端 | server/ingest_test.go、docreader/parser | 部分实现（PDF 文本层可解析。扫描件、入库端到端和 20 页时限未做） |
+| 5 | FR-04 | US-03 | AC-03-01, AC-03-02, AC-03-03, AC-03-04, AC-03-05, AC-03-06, AC-03-07, AC-03-08 | 必须 | 接口、docreader 单元、端到端 | server/internal/ingest/chunker_test.go、server/internal/httpapi/library_test.go、docreader/tests/test_pdf.py | 部分实现（PDF 文本层解析、切块、向量化入库与重启失败恢复已实现；扫描件 OCR 与 20 页时限基准测试未做） |
 | 6 | FR-04 | US-04 | AC-04-04 | 必须 | 接口 | server/internal/httpapi/knowledge_test.go、server/internal/knowledge/memory_test.go | 已完成 |
 | 7 | FR-05 | US-05 | AC-05-01, AC-05-02, AC-05-03, AC-05-04, AC-05-05, AC-05-06 | 必须 | 接口 | server/internal/httpapi/knowledge_test.go、server/internal/knowledge/memory_test.go | 已完成（AC-05-06 压测未做） |
-| 8 | FR-06 | US-06 | AC-06-01, AC-06-02, AC-06-03, AC-06-04, AC-06-05, AC-06-06, AC-06-07, AC-06-08, AC-06-09, AC-06-10, AC-06-11, AC-06-12, AC-06-13 | 必须 | 单元、接口、评测 | server/qa_test.go、eval/qa_eval.py | 待开发 |
-| 9 | FR-06 | US-08 | AC-08-02 | 必须 | 接口 | server/qa_test.go | 待开发 |
-| 10 | FR-07 | US-07 | AC-07-01, AC-07-02, AC-07-03, AC-07-04, AC-07-05, AC-07-06, AC-07-07, AC-07-08 | 必须 | 单元、接口、端到端 | server/graph_test.go | 待开发 |
-| 11 | FR-08 | US-09 | AC-09-01, AC-09-02, AC-09-03, AC-09-04, AC-09-05 | 必须 | 接口 | server/model_test.go | 待开发 |
-| 12 | FR-09 | US-10 | AC-10-01, AC-10-02, AC-10-03, AC-10-04 | 应该 | 接口 | server/session_test.go | 待开发 |
-| 13 | FR-10 | US-11 | AC-11-01, AC-11-02 | 应该 | 接口 | server/qa_test.go | 待开发 |
-| 14 | FR-11 | US-12 | AC-12-01, AC-12-02 | 应该 | 接口 | server/qa_test.go | 待开发 |
-| 15 | FR-12 | US-13 | AC-13-01, AC-13-02 | 应该 | 接口 | server/chunk_test.go | 待开发 |
-| 16 | FR-13 | US-14 | AC-14-01, AC-14-02 | 应该 | 接口 | server/kb_settings_test.go | 待开发 |
+| 8 | FR-06 | US-06 | AC-06-01, AC-06-02, AC-06-03, AC-06-04, AC-06-05, AC-06-06, AC-06-07, AC-06-08, AC-06-09, AC-06-10, AC-06-11, AC-06-12, AC-06-13 | 必须 | 单元、接口、评测 | server/internal/qa/service_test.go、server/internal/httpapi/qa_test.go、server/internal/retrieval/engine_test.go | 已完成（20 题人工评测与日志脱敏扫描待补） |
+| 9 | FR-06 | US-08 | AC-08-02 | 必须 | 接口 | server/internal/httpapi/qa_test.go、server/internal/qa/service_test.go | 已完成 |
+| 10 | FR-07 | US-07 | AC-07-01, AC-07-02, AC-07-03, AC-07-04, AC-07-05, AC-07-06, AC-07-07, AC-07-08 | 必须 | 单元、接口、端到端 | server/internal/graph/graph_test.go、browse_test.go、browse_pg_test.go、attempt_test.go、validate_test.go、server/internal/httpapi/graph_test.go | 已完成 |
+| 11 | FR-08 | US-09 | AC-09-01, AC-09-02, AC-09-03, AC-09-04, AC-09-05 | 必须 | 接口 | server/internal/httpapi/library_test.go、server/internal/provider/gateway_test.go | 已完成 |
+| 12 | FR-09 | US-10 | AC-10-01, AC-10-02, AC-10-03, AC-10-04 | 应该 | 接口 | server/internal/qa/service_test.go、server/internal/httpapi/qa_test.go | 已完成 |
+| 13 | FR-10 | US-11 | AC-11-01, AC-11-02 | 应该 | 接口 | server/internal/qa/service_test.go、server/internal/prompts/prompts_test.go | 已完成 |
+| 14 | FR-11 | US-12 | AC-12-01, AC-12-02 | 应该 | 接口 | server/internal/provider/gateway_test.go、server/internal/retrieval/engine_test.go | 已完成 |
+| 15 | FR-12 | US-13 | AC-13-01, AC-13-02 | 应该 | 接口 | server/internal/ingest/chunker_test.go、server/internal/httpapi/qa_test.go | 部分实现（父子块上下文与切块详情已实现；切块预生成问法未做） |
+| 16 | FR-13 | US-14 | AC-14-01, AC-14-02 | 应该 | 接口 | server/internal/httpapi/qa_test.go、server/internal/httpapi/suggest_mount_test.go、server/internal/suggest/live_test.go、server/internal/suggest/suggest_test.go | 已完成 |
 | 17 | FR-14 | US-15 | AC-15-01, AC-15-02, AC-15-03, AC-15-04 | 应该 | 接口、端到端 | server/research_test.go | 待开发 |
 | 18 | FR-15 | US-16 | AC-16-01, AC-16-02 | 应该 | 接口 | server/qa_test.go | 待开发 |
 | 19 | FR-16 | US-17 | AC-17-01, AC-17-02, AC-17-03 | 应该 | 接口 | server/wiki_test.go | 待开发 |
@@ -66,7 +66,7 @@
 | NFR-09 | 无单独验收条目 | 主服务与 docreader 分开统计覆盖率 | 待开发 |
 | NFR-10 | AC-06-06, AC-07-01 | 评测脚本与页码抽检 | 待开发 |
 | NFR-11 | 无单独验收条目 | 浏览器检查 | 待开发 |
-| NFR-12 | 无单独验收条目 | 按 README 部署 | 待开发 |
+| NFR-12 | 无单独验收条目 | 按 README 部署 | 已完成（compose.yaml、README.md、CI compose-smoke） |
 
 ## 3 覆盖
 

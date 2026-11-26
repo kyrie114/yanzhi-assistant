@@ -29,6 +29,13 @@ func Migrate(ctx context.Context, url, dir string) error {
 		return err
 	}
 	defer conn.Close(ctx)
+	const migrateLockID int64 = 728194021
+	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock($1)`, migrateLockID); err != nil {
+		return err
+	}
+	defer func() {
+		_, _ = conn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, migrateLockID)
+	}()
 	_, err = conn.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
 		version text PRIMARY KEY,
 		applied_at timestamptz NOT NULL DEFAULT now()
