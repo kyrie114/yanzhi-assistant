@@ -49,6 +49,7 @@ const RELATION_LABELS: Record<string, string> = {
 const route = useRoute();
 
 const loading = ref(true);
+const memoryMode = ref(false);
 const loadError = ref('');
 const kb = ref<KB | null>(null);
 const doc = ref<Doc | null>(null);
@@ -125,6 +126,10 @@ function relationLabel(code: string): string {
 
 function isActive(status: string | null | undefined): boolean {
   return status === '待抽取' || status === '抽取中';
+}
+
+function isUnmountedRouteError(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 404 && err.code === 'HTTP_404';
 }
 
 function nodeName(id: string): string {
@@ -221,25 +226,40 @@ async function load(): Promise<void> {
   const seq = ++loadSeq;
   stopPoll();
   loading.value = true;
+  memoryMode.value = false;
   loadError.value = '';
   clearPayload();
   try {
     if (isDocument.value) {
       const id = documentId.value;
-      const [nextDoc, nextView, nextExtraction, nextUnresolved] = await Promise.all([
-        getDocument(id),
-        getDocumentGraph(id),
-        getGraphExtraction(id),
-        getUnresolvedReferences(id),
-      ]);
+      const nextDoc = await getDocument(id);
       if (seq !== loadSeq) {
         return;
       }
       doc.value = nextDoc;
-      view.value = nextView;
-      extraction.value = nextExtraction;
-      unresolved.value = nextUnresolved;
-      syncPoll();
+      try {
+        const [nextView, nextExtraction, nextUnresolved] = await Promise.all([
+          getDocumentGraph(id),
+          getGraphExtraction(id),
+          getUnresolvedReferences(id),
+        ]);
+        if (seq !== loadSeq) {
+          return;
+        }
+        view.value = nextView;
+        extraction.value = nextExtraction;
+        unresolved.value = nextUnresolved;
+        syncPoll();
+      } catch (err) {
+        if (seq !== loadSeq) {
+          return;
+        }
+        if (isUnmountedRouteError(err)) {
+          memoryMode.value = true;
+          return;
+        }
+        throw err;
+      }
       return;
     }
     const scope: GraphScope = {};
@@ -249,15 +269,29 @@ async function load(): Promise<void> {
     if (tagIds.value.length > 0) {
       scope.tagIds = tagIds.value;
     }
-    const [nextKB, nextView] = await Promise.all([
-      kbId.value ? getKB(kbId.value) : Promise.resolve(null),
-      getGraph(scope),
-    ]);
-    if (seq !== loadSeq) {
-      return;
+    if (kbId.value) {
+      const nextKB = await getKB(kbId.value);
+      if (seq !== loadSeq) {
+        return;
+      }
+      kb.value = nextKB;
     }
-    kb.value = nextKB;
-    view.value = nextView;
+    try {
+      const nextView = await getGraph(scope);
+      if (seq !== loadSeq) {
+        return;
+      }
+      view.value = nextView;
+    } catch (err) {
+      if (seq !== loadSeq) {
+        return;
+      }
+      if (isUnmountedRouteError(err)) {
+        memoryMode.value = true;
+        return;
+      }
+      throw err;
+    }
   } catch (err) {
     if (seq !== loadSeq) {
       return;
@@ -410,6 +444,9 @@ onBeforeUnmount(stopPoll);
     </div>
 
     <div v-if="loading" class="card muted">正在加载图谱…</div>
+    <div v-else-if="memoryMode" class="alert alert-warn">
+      当前运行在内存模式，未提供知识图谱接口
+    </div>
     <div v-else-if="loadError" class="alert alert-error">{{ loadError }}</div>
     <template v-else-if="view">
       <section v-if="isDocument && extraction" class="card">

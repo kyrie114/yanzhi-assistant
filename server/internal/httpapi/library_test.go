@@ -12,6 +12,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -57,11 +59,59 @@ func TestUploadUsesDocreaderWhenDatabaseIsConfigured(t *testing.T) {
 	key := bytes.Repeat([]byte{7}, 32)
 	models := provider.Store{Pool: pool, Key: key}
 	handler := NewLibraryHandler(accounts, library, models)
-	token := registerLibraryUser(t, handler)
-	promoteAdmin(t, handler, pool, token)
-	embed := fakeEmbedder(t)
+	adminToken := registerLibraryUser(t, handler)
+	promoteAdmin(t, handler, pool, adminToken)
+	var (
+		authMu   sync.Mutex
+		authSeen []string
+	)
+	embed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authMu.Lock()
+		authSeen = append(authSeen, r.Header.Get("Authorization"))
+		authMu.Unlock()
+		var req struct {
+			Input json.RawMessage `json:"input"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		n := 1
+		if len(req.Input) > 0 && req.Input[0] == '[' {
+			var texts []string
+			if json.Unmarshal(req.Input, &texts) == nil && len(texts) > 0 {
+				n = len(texts)
+			}
+		}
+		data := make([]map[string]any, n)
+		for i := range data {
+			data[i] = map[string]any{"index": i, "embedding": []float32{0.1, 0.2, 0.3, 0.4}}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": data, "usage": map[string]int{"prompt_tokens": n},
+		})
+	}))
 	defer embed.Close()
-	saveModel(t, handler, token, embed.URL)
+	saveModel(t, handler, adminToken, embed.URL)
+
+	probeRec := jsonRequest(t, handler, http.MethodPost, "/api/v1/admin/model-configs/embedding/connection-tests", adminToken, map[string]any{
+		"base_url": embed.URL + "/v1", "model_name": "embed-test", "api_key": "", "dimension": 4,
+	})
+	if probeRec.Code != http.StatusOK {
+		t.Fatalf("probe saved model: %d %s", probeRec.Code, probeRec.Body.Bytes())
+	}
+	var probeBody struct {
+		Result string `json:"result"`
+	}
+	decode(t, probeRec.Body.Bytes(), &probeBody)
+	if probeBody.Result != "ok" {
+		t.Fatalf("probe result %+v", probeBody)
+	}
+	authMu.Lock()
+	if len(authSeen) == 0 || authSeen[0] != "Bearer sk-test" {
+		authMu.Unlock()
+		t.Fatalf("expected stored key header during probe, got %v", authSeen)
+	}
+	authMu.Unlock()
+
+	token := registerLibraryUser(t, handler)
 
 	rec := jsonRequest(t, handler, http.MethodPost, "/api/v1/kbs", token, map[string]string{"name": "论文"})
 	if rec.Code != http.StatusCreated {
@@ -283,4 +333,115 @@ func startParser(t *testing.T, py, root string) (string, *exec.Cmd) {
 	_ = cmd.Process.Kill()
 	t.Fatal("parser did not start")
 	return "", nil
+}
+
+type stubModelStore struct {
+	saved provider.Remote
+	http  provider.Client
+}
+
+func (s stubModelStore) List(context.Context) ([]provider.Saved, error) {
+	return nil, nil
+}
+
+func (s stubModelStore) Put(context.Context, string, provider.PutInput) (provider.Saved, error) {
+	return provider.Saved{}, nil
+}
+
+func (s stubModelStore) ResolveKey(_ context.Context, kind, base, model string, key *string, dim *int) (provider.Remote, error) {
+	remote := provider.Remote{
+		Kind:    kind,
+		BaseURL: strings.TrimRight(strings.TrimSpace(base), "/"),
+		Model:   strings.TrimSpace(model),
+	}
+	if dim != nil {
+		remote.Dimension = *dim
+	}
+	if key != nil {
+		if trimmed := strings.TrimSpace(*key); trimmed != "" {
+			remote.APIKey = trimmed
+			return remote, nil
+		}
+	}
+	if remote.BaseURL == "" {
+		remote.BaseURL = s.saved.BaseURL
+	}
+	if remote.Model == "" {
+		remote.Model = s.saved.Model
+	}
+	remote.APIKey = s.saved.APIKey
+	return remote, nil
+}
+
+func (s stubModelStore) Probe(ctx context.Context, remote provider.Remote) provider.Probe {
+	return s.http.Probe(ctx, remote)
+}
+
+func TestProbeModelFallsBackToStoredAPIKey(t *testing.T) {
+	var (
+		mu   sync.Mutex
+		auth []string
+	)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		auth = append(auth, r.Header.Get("Authorization"))
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"pong"}}]}`))
+	}))
+	defer upstream.Close()
+
+	role := "admin"
+	lh := &libraryHandler{
+		models: stubModelStore{
+			saved: provider.Remote{Kind: "chat", BaseURL: upstream.URL, Model: "gpt-test", APIKey: "sk-stored-secret"},
+			http:  provider.Client{HTTP: upstream.Client()},
+		},
+		domain: &handler{},
+		authFn: func(*http.Request) (identity.Principal, error) {
+			return identity.Principal{UserID: "user-1", Role: role}, nil
+		},
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/v1/admin/model-configs/{kind}/connection-tests", lh.probeModel)
+	h := withRequestID(mux)
+
+	// 1. Empty api_key falls back to the stored key.
+	rec := jsonRequest(t, h, http.MethodPost, "/api/v1/admin/model-configs/chat/connection-tests", "", map[string]any{
+		"base_url": upstream.URL, "model_name": "gpt-test", "api_key": "",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("empty key probe: %d %s", rec.Code, rec.Body.Bytes())
+	}
+	var got struct {
+		Result string `json:"result"`
+	}
+	decode(t, rec.Body.Bytes(), &got)
+	if got.Result != "ok" {
+		t.Fatalf("expected ok, got %+v", got)
+	}
+
+	// 2. Explicit api_key overrides the stored key.
+	rec = jsonRequest(t, h, http.MethodPost, "/api/v1/admin/model-configs/chat/connection-tests", "", map[string]any{
+		"base_url": upstream.URL, "model_name": "gpt-test", "api_key": "sk-override",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("explicit key probe: %d %s", rec.Code, rec.Body.Bytes())
+	}
+
+	mu.Lock()
+	if len(auth) != 2 || auth[0] != "Bearer sk-stored-secret" || auth[1] != "Bearer sk-override" {
+		mu.Unlock()
+		t.Fatalf("unexpected auth headers: %v", auth)
+	}
+	mu.Unlock()
+
+	// 3. Non-admin caller still gets 403.
+	role = "user"
+	rec = jsonRequest(t, h, http.MethodPost, "/api/v1/admin/model-configs/chat/connection-tests", "", map[string]any{
+		"base_url": upstream.URL, "model_name": "gpt-test", "api_key": "",
+	})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for non-admin, got %d %s", rec.Code, rec.Body.Bytes())
+	}
 }

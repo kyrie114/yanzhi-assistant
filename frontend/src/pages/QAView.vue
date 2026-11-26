@@ -58,6 +58,7 @@ const selectedDocIds = ref<string[]>([]);
 
 const questionInput = ref('');
 const suggestions = ref<string[]>([]);
+const suggestionsUnsupported = ref(false);
 const askedQuestion = ref('');
 
 interface LiveTurnView {
@@ -105,7 +106,7 @@ watch([suggestScope, askedQuestion], () => {
 
 async function loadSuggestions(): Promise<void> {
   const scope = suggestScope.value;
-  if (!scope) {
+  if (!scope || suggestionsUnsupported.value) {
     suggestions.value = [];
     return;
   }
@@ -115,7 +116,10 @@ async function loadSuggestions(): Promise<void> {
       return;
     }
     suggestions.value = result.questions;
-  } catch {
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404 && err.code === 'HTTP_404') {
+      suggestionsUnsupported.value = true;
+    }
     if (suggestScope.value?.id === scope.id) {
       suggestions.value = [];
     }

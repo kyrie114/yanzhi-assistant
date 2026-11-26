@@ -260,13 +260,22 @@ func (s Store) reindex(ctx context.Context, tx pgx.Tx, model string, dim int) er
 	return nil
 }
 
+func (s Store) Probe(ctx context.Context, remote Remote) Probe {
+	return s.HTTP.Probe(ctx, remote)
+}
+
 func (s Store) ResolveKey(ctx context.Context, kind, base, model string, key *string, dim *int) (Remote, error) {
 	remote := Remote{Kind: kind, BaseURL: strings.TrimRight(strings.TrimSpace(base), "/"), Model: strings.TrimSpace(model)}
 	if dim != nil {
 		remote.Dimension = *dim
 	}
-	if key != nil && *key != "" {
-		remote.APIKey = *key
+	if key != nil {
+		if trimmed := strings.TrimSpace(*key); trimmed != "" {
+			remote.APIKey = trimmed
+			return remote, nil
+		}
+	}
+	if s.Pool == nil {
 		return remote, nil
 	}
 	saved, err := s.Load(ctx, kind)

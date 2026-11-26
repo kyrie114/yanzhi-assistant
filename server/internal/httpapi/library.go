@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -63,10 +64,18 @@ func NewLibraryHandler(accounts *identity.Service, library knowledge.Service, mo
 	return withRequestID(mux)
 }
 
+type modelStore interface {
+	List(ctx context.Context) ([]provider.Saved, error)
+	Put(ctx context.Context, kind string, in provider.PutInput) (provider.Saved, error)
+	ResolveKey(ctx context.Context, kind, base, model string, key *string, dim *int) (provider.Remote, error)
+	Probe(ctx context.Context, remote provider.Remote) provider.Probe
+}
+
 type libraryHandler struct {
 	accounts *identity.Service
-	models   provider.Store
+	models   modelStore
 	domain   *handler
+	authFn   func(*http.Request) (identity.Principal, error)
 }
 
 func (h *libraryHandler) register(w http.ResponseWriter, r *http.Request) {
@@ -153,6 +162,9 @@ func (h *libraryHandler) changePassword(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *libraryHandler) principal(r *http.Request) (identity.Principal, error) {
+	if h.authFn != nil {
+		return h.authFn(r)
+	}
 	raw, err := bearer(r)
 	if err != nil {
 		return identity.Principal{}, err
@@ -226,10 +238,12 @@ func (h *libraryHandler) probeModel(w http.ResponseWriter, r *http.Request) {
 		h.domain.writeErr(w, r, err)
 		return
 	}
-	probe := h.models.HTTP.Probe(r.Context(), provider.Remote{
-		Kind: r.PathValue("kind"), BaseURL: req.BaseURL, Model: req.ModelName,
-		APIKey: req.APIKey, Dimension: req.Dimension,
-	})
+	remote, err := h.models.ResolveKey(r.Context(), r.PathValue("kind"), req.BaseURL, req.ModelName, &req.APIKey, &req.Dimension)
+	if err != nil {
+		h.domain.writeErr(w, r, err)
+		return
+	}
+	probe := h.models.Probe(r.Context(), remote)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"result": probe.Result, "message": probe.Message, "elapsed_ms": probe.ElapsedMS,
 	})

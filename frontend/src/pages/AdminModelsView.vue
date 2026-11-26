@@ -78,7 +78,7 @@ onMounted(async () => {
       applySavedConfig(item);
     }
   } catch (err) {
-    if (err instanceof ApiError && err.status === 404) {
+    if (err instanceof ApiError && err.status === 404 && err.code === 'HTTP_404') {
       memoryMode.value = true;
     } else {
       loadError.value = err instanceof ApiError ? err.message : '加载模型配置失败';
