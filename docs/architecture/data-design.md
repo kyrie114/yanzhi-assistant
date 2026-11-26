@@ -81,6 +81,8 @@ erDiagram
 
 退出只插入当前 `jti`。修改密码和重置密码不逐枚插入，而是更新 `users.tokens_invalid_before`。
 
+实现说明（2026-10-20）：FR-01 的 `account.MemoryStore` 另维护内存字段 `SessionVersion`，与改密哈希和上述失效时间原子更新；JWT 的 `sv` 与该值比较，消除同秒改密的精度缺口。本次未修改数据库表或迁移；以后接入持久化账户服务时，需同时迁移、保存和核对会话版本，不能只依赖秒级 `iat`。
+
 ### email_tokens
 
 | 列 | 类型 | 约束 | 说明 |

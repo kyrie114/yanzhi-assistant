@@ -3,3 +3,28 @@ homework/evidence/*.stdout binary
 homework/trajectory.svg text eol=lf
 homework/render_trajectory.py text eol=lf
 homework/evidence/trajectory-events.json text eol=lf
+
+*.go text eol=lf
+*.mod text eol=lf
+*.sum text eol=lf
+*.ts text eol=lf
+*.js text eol=lf
+*.vue text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.json text eol=lf
+*.py text eol=lf
+*.toml text eol=lf
+*.proto text eol=lf
+*.sql text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.conf text eol=lf
+Dockerfile text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+.dockerignore text eol=lf
+.env.example text eol=lf
+*.png binary
