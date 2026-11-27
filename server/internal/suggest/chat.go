@@ -3,9 +3,13 @@ package suggest
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"yanzhi/server/internal/platform/db"
 	"yanzhi/server/internal/prompts"
 	"yanzhi/server/internal/provider"
 )
@@ -15,6 +19,8 @@ const suggestPrompt = "摘录：\n{chunks}\n\n根据摘录写出不超过 5 个�
 type ChatModel struct {
 	Models  provider.Store
 	AI      provider.Client
+	Pool    *pgxpool.Pool
+	Logger  *slog.Logger
 	Timeout time.Duration
 }
 
@@ -33,7 +39,23 @@ func (c ChatModel) SuggestQuestions(texts []string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	body, _, err := c.AI.Complete(ctx, remote, prompts.Render(suggestPrompt, map[string]string{"chunks": joined}), "只输出 JSON 数组")
+	rendered := prompts.Render(suggestPrompt, map[string]string{"chunks": joined})
+	start := time.Now()
+	body, usage, err := c.AI.Complete(ctx, remote, rendered, "只输出 JSON 数组")
+	elapsed := int(time.Since(start).Milliseconds())
+	status := "ok"
+	if err != nil {
+		status = "error"
+	}
+	provider.RecordModelCall(ctx, c.Pool, c.Logger, provider.CallMeta{
+		RequestID:  db.NewID(),
+		Kind:       "suggest",
+		Model:      remote.Model,
+		ElapsedMS:  elapsed,
+		Usage:      usage,
+		Status:     status,
+		PromptHash: provider.PromptSHA256(rendered),
+	})
 	if err != nil {
 		return nil, err
 	}

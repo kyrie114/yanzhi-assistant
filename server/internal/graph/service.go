@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ type Service struct {
 	Pool    *pgxpool.Pool
 	AI      provider.Client
 	Models  provider.Store
+	Logger  *slog.Logger
 	Timeout time.Duration
 }
 
@@ -90,10 +92,27 @@ func (s Service) Extract(ctx context.Context, job jobs.Job) error {
 			b.WriteString("\n<<<END>>>\n")
 		}
 		prompt := prompts.Render(prompts.GraphExtract, map[string]string{"chunks": b.String()})
+		promptHash := provider.PromptSHA256(prompt)
 		text, err := attemptCall(func() (string, error) {
+			start := time.Now()
 			callCtx, cancel := context.WithTimeout(ctx, s.timeout())
 			defer cancel()
-			body, _, callErr := s.AI.Complete(callCtx, remote, prompt, "只输出 JSON")
+			body, usage, callErr := s.AI.Complete(callCtx, remote, prompt, "只输出 JSON")
+			elapsed := int(time.Since(start).Milliseconds())
+			status := "ok"
+			if callErr != nil {
+				status = "error"
+			}
+			provider.RecordModelCall(ctx, s.Pool, s.Logger, provider.CallMeta{
+				RequestID:  job.RequestID,
+				UserID:     job.OwnerID,
+				Kind:       "graph_extract",
+				Model:      remote.Model,
+				ElapsedMS:  elapsed,
+				Usage:      usage,
+				Status:     status,
+				PromptHash: promptHash,
+			})
 			if callErr != nil {
 				return "", callErr
 			}

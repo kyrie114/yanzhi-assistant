@@ -9,12 +9,14 @@ import (
 	"yanzhi/server/internal/apperr"
 	"yanzhi/server/internal/identity"
 	"yanzhi/server/internal/knowledge"
+	"yanzhi/server/internal/platform/applog"
 	"yanzhi/server/internal/provider"
 )
 
 func NewLibraryHandler(accounts *identity.Service, library knowledge.Service, models provider.Store, opts ...Option) http.Handler {
 	domain := &handler{
 		kb:         library,
+		docRetry:   library,
 		graphRetry: library,
 		authFn: func(r *http.Request) (account.Caller, error) {
 			raw, err := bearer(r)
@@ -61,7 +63,8 @@ func NewLibraryHandler(accounts *identity.Service, library knowledge.Service, mo
 	mux.HandleFunc("GET /api/v1/admin/model-configs", h.listModels)
 	mux.HandleFunc("PUT /api/v1/admin/model-configs/{kind}", h.putModel)
 	mux.HandleFunc("POST /api/v1/admin/model-configs/{kind}/connection-tests", h.probeModel)
-	return withRequestID(mux)
+	wrapped := applog.AccessMiddleware(domain.logger, domain.reqLogSink, requestID, nil)(mux)
+	return withRequestID(wrapped)
 }
 
 type modelStore interface {

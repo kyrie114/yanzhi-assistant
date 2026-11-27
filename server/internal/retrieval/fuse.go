@@ -35,7 +35,7 @@ WHERE d.owner_id = $2
 ORDER BY c.embedding <=> $1
 LIMIT 20`
 
-// KeywordSQL 不使用余弦距离。候选先限定在当前用户的已完成资料里。
+// KeywordSQL 不使用余弦距离。候选先限定在当前用户的已完成资料与当前向量代际的正文切块里。
 const KeywordSQL = `
 SELECT c.id::text, p.term, p.tf, c.term_count, ts.df
 FROM chunk_postings p
@@ -44,6 +44,8 @@ JOIN documents d ON d.id = c.document_id
 JOIN term_stats ts ON ts.owner_id = d.owner_id AND ts.term = p.term
 WHERE d.owner_id = $1
   AND d.status = 'ready'
+  AND c.embedding_generation = d.embedding_generation
+  AND p.field = 'text'
   AND d.id = ANY($2::uuid[])
   AND p.term = ANY($3::text[])`
 

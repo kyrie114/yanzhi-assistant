@@ -38,6 +38,18 @@ type KnowledgeBackend interface {
 	PutTags(ctx context.Context, owner, docID string, tagIDs []string) (knowledge.Doc, error)
 }
 
+type DocumentRetry interface {
+	Retry(ctx context.Context, owner, id, requestID string) error
+}
+
+var _ DocumentRetry = knowledge.Service{}
+
+func WithDocumentRetry(r DocumentRetry) Option {
+	return func(h *handler) {
+		h.docRetry = r
+	}
+}
+
 func (h *handler) registerKnowledgeRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/kbs", h.listKBs)
 	mux.HandleFunc("POST /api/v1/kbs", h.createKB)
@@ -487,6 +499,18 @@ func (h *handler) putDocumentTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, doc)
+}
+
+func (h *handler) retryDocument(w http.ResponseWriter, r *http.Request) {
+	caller, ok := h.authorize(w, r, access.ActOpen)
+	if !ok {
+		return
+	}
+	if err := h.docRetry.Retry(r.Context(), caller.User.ID, r.PathValue("id"), requestID(r)); err != nil {
+		h.writeErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{})
 }
 
 func contentDisposition(title string) string {

@@ -38,7 +38,8 @@ type PublicUser struct {
 }
 
 type Claims struct {
-	Role string `json:"role"`
+	Role           string `json:"role"`
+	SessionVersion uint64 `json:"sv"`
 	jwt.RegisteredClaims
 }
 
@@ -109,10 +110,11 @@ func (s *Service) Login(ctx context.Context, email, password string) (LoginResul
 		id, name, role, hash string
 		verified             *time.Time
 		invalid              *time.Time
+		sv                   int64
 	)
 	err := s.Pool.QueryRow(ctx, `
-		SELECT id::text, name, role, password_hash, email_verified_at, tokens_invalid_before
-		FROM users WHERE email = $1`, email).Scan(&id, &name, &role, &hash, &verified, &invalid)
+		SELECT id::text, name, role, password_hash, email_verified_at, tokens_invalid_before, session_version
+		FROM users WHERE email = $1`, email).Scan(&id, &name, &role, &hash, &verified, &invalid, &sv)
 	compare := s.dummy
 	if err == nil {
 		compare = []byte(hash)
@@ -122,7 +124,10 @@ func (s *Service) Login(ctx context.Context, email, password string) (LoginResul
 	if bcrypt.CompareHashAndPassword(compare, []byte(password)) != nil || err != nil {
 		return LoginResult{}, apperr.ErrCredentials
 	}
-	token, _, err := s.sign(id, role)
+	if sv < 1 {
+		sv = 1
+	}
+	token, _, err := s.sign(id, role, uint64(sv))
 	if err != nil {
 		return LoginResult{}, err
 	}
@@ -132,10 +137,11 @@ func (s *Service) Login(ctx context.Context, email, password string) (LoginResul
 	}, nil
 }
 
-func (s *Service) sign(userID, role string) (string, Claims, error) {
+func (s *Service) sign(userID, role string, sessionVersion uint64) (string, Claims, error) {
 	now := s.Clock.Now()
 	claims := Claims{
-		Role: role,
+		Role:           role,
+		SessionVersion: sessionVersion,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   userID,
 			ID:        db.NewID(),
@@ -173,16 +179,21 @@ func (s *Service) Authenticate(ctx context.Context, raw string) (Principal, erro
 		verified *time.Time
 		invalid  *time.Time
 		revoked  bool
+		sv       int64
 	)
 	err = s.Pool.QueryRow(ctx, `
 		SELECT u.role, u.email_verified_at, u.tokens_invalid_before,
-		       EXISTS(SELECT 1 FROM revoked_tokens r WHERE r.jti = $2::uuid)
-		FROM users u WHERE u.id = $1::uuid`, claims.Subject, claims.ID).Scan(&role, &verified, &invalid, &revoked)
+		       EXISTS(SELECT 1 FROM revoked_tokens r WHERE r.jti = $2::uuid),
+		       u.session_version
+		FROM users u WHERE u.id = $1::uuid`, claims.Subject, claims.ID).Scan(&role, &verified, &invalid, &revoked, &sv)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Principal{}, apperr.ErrUnauthenticated
 	}
 	if err != nil {
 		return Principal{}, err
+	}
+	if claims.SessionVersion == 0 || sv < 1 || claims.SessionVersion != uint64(sv) {
+		return Principal{}, apperr.ErrUnauthenticated
 	}
 	iat := claims.IssuedAt.Time
 	exp := claims.ExpiresAt.Time
@@ -227,13 +238,15 @@ func (s *Service) ChangePassword(ctx context.Context, userID, oldPassword, newPa
 		return apperr.ErrPasswordWeak
 	}
 	tag, err := s.Pool.Exec(ctx, `
-		UPDATE users SET password_hash = $2, tokens_invalid_before = $3 WHERE id = $1::uuid`,
-		userID, string(next), s.Clock.Now())
+		UPDATE users
+		SET password_hash = $2, tokens_invalid_before = $3, session_version = session_version + 1
+		WHERE id = $1::uuid AND password_hash = $4`,
+		userID, string(next), s.Clock.Now(), hash)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return apperr.ErrUnauthenticated
+		return apperr.ErrCredentials
 	}
 	return nil
 }
@@ -287,7 +300,9 @@ func (s *Service) ResetPassword(ctx context.Context, email, password string) err
 		return err
 	}
 	tag, err := s.Pool.Exec(ctx, `
-		UPDATE users SET password_hash = $2, tokens_invalid_before = $3 WHERE email = $1`,
+		UPDATE users
+		SET password_hash = $2, tokens_invalid_before = $3, session_version = session_version + 1
+		WHERE email = $1`,
 		email, string(hash), s.Clock.Now())
 	if err != nil {
 		return err

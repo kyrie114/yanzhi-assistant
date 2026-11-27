@@ -896,3 +896,52 @@ func TestAsiaShanghaiTimestampsAndDoneSessionIDAcrossBranches(t *testing.T) {
 		t.Fatalf("Turn timestamps must use +08:00, got %+v", detail.Turns)
 	}
 }
+
+func TestPatchDeleteOptionsAndModelErrorSSE(t *testing.T) {
+	h := newHarness(t,
+		qa.WithTurnTimeout(5*time.Second),
+		qa.WithGraphLimit(2),
+		qa.WithHistoryLimit(3),
+	)
+	owner := uuid.NewString()
+	kb, err := h.kb.CreateKB(h.ctx, owner, "ErrKB")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedReadyDoc(t, h.kb, owner, kb.ID, "ErrDoc", 1,
+		[]knowledge.MemoryParentChunk{{ID: "p1", PageStart: 1, Text: "Parent"}},
+		[]knowledge.MemoryChunkInput{{ID: "c1", ParentID: "p1", PageStart: 1, ParagraphIndex: 0, Text: "Alpha method", Embedding: []float32{1, 0, 0, 0}}},
+	)
+	sess, err := h.svc.CreateSession(h.ctx, owner, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	patched, err := h.svc.PatchSession(h.ctx, owner, sess.ID, "已修改标题")
+	if err != nil || patched.Title != "已修改标题" {
+		t.Fatalf("PatchSession got %+v err=%v", patched, err)
+	}
+
+	h.gw.StreamFn = func(context.Context, string, string, func(string) error) error {
+		return apperr.ErrModelDown
+	}
+	handle, err := h.svc.StartTurn(h.ctx, owner, sess.ID, "req-err-1", qa.AskInput{
+		Question: "Alpha method",
+		Scope:    knowledge.ScopeInput{Type: "kb", KBID: kb.ID},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	evts := collectEvents(h.ctx, handle.Stream)
+	last := evts[len(evts)-1]
+	m := decodeEventMap(t, last)
+	if last.Name != "error" || m["request_id"] != "req-err-1" {
+		t.Fatalf("expected error SSE with request_id, got %s %+v", last.Name, m)
+	}
+
+	if err := h.svc.DeleteSession(h.ctx, owner, sess.ID); err != nil {
+		t.Fatalf("DeleteSession: %v", err)
+	}
+	if _, err := h.svc.GetSession(h.ctx, owner, sess.ID); !errors.Is(err, apperr.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound after DeleteSession, got %v", err)
+	}
+}

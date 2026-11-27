@@ -17,6 +17,9 @@ func (h *handler) registerDomainRoutes(mux *http.ServeMux) {
 		mux.HandleFunc("PATCH /api/v1/kbs/{kb_id}/settings", h.patchKBSettings)
 		mux.HandleFunc("GET /api/v1/documents/{document_id}/chunks/{chunk_id}", h.getChunkDetail)
 	}
+	if h.docRetry != nil {
+		mux.HandleFunc("POST /api/v1/documents/{id}/retries", h.retryDocument)
+	}
 	if h.qa != nil {
 		h.registerQARoutes(mux)
 	}

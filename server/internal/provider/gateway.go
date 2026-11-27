@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"log/slog"
 	"maps"
 	"slices"
 	"sync"
@@ -54,6 +55,7 @@ type PGGateway struct {
 	Pool        *pgxpool.Pool
 	Store       Store
 	Client      Client
+	Logger      *slog.Logger
 	RetryDelays []time.Duration
 }
 
@@ -252,7 +254,24 @@ func errorStatus(ctx context.Context, err error) string {
 }
 
 func (g *PGGateway) recordLog(ctx context.Context, meta CallMeta) {
-	if g.Pool == nil {
+	RecordModelCall(ctx, g.Pool, g.Logger, meta)
+}
+
+// RecordModelCall 将脱敏模型调用元数据写入 model_call_logs 并可选输出结构化 JSON 日志（NFR-07）。
+func RecordModelCall(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger, meta CallMeta) {
+	if logger != nil {
+		logger.Info("model_call",
+			"request_id", meta.RequestID,
+			"user_id", meta.UserID,
+			"kind", meta.Kind,
+			"model", meta.Model,
+			"elapsed_ms", meta.ElapsedMS,
+			"prompt_tokens", meta.Usage.Prompt,
+			"completion_tokens", meta.Usage.Completion,
+			"status", meta.Status,
+		)
+	}
+	if pool == nil {
 		return
 	}
 	reqUUID, ok := db.UUID(meta.RequestID)
@@ -269,7 +288,7 @@ func (g *PGGateway) recordLog(ctx context.Context, meta CallMeta) {
 	}
 	logCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 	defer cancel()
-	_, _ = g.Pool.Exec(logCtx, `
+	_, _ = pool.Exec(logCtx, `
 		INSERT INTO model_call_logs
 			(id, request_id, user_id, kind, model, elapsed_ms, prompt_tokens, completion_tokens, status, prompt_sha256, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 
 	"yanzhi/server/internal/account"
@@ -26,6 +28,7 @@ import (
 	"yanzhi/server/internal/ingest"
 	"yanzhi/server/internal/jobs"
 	"yanzhi/server/internal/knowledge"
+	"yanzhi/server/internal/platform/applog"
 	"yanzhi/server/internal/platform/clock"
 	pconfig "yanzhi/server/internal/platform/config"
 	"yanzhi/server/internal/platform/db"
@@ -123,9 +126,11 @@ func newHTTPServerWithContext(appCtx context.Context, cfg config) *http.Server {
 	qaStore := qa.NewMemoryStore(qa.WithAliveCheck(qa.MemoryAliveChecker(kbStore)))
 	qaSvc := qa.NewService(appCtx, qaStore, kbStore, gw, ret, graphMem)
 
+	logger := applog.New(os.Stdout)
 	handler := httpapi.NewHandler(svc,
 		httpapi.WithKnowledge(kbStore),
 		httpapi.WithQA(qaSvc),
+		httpapi.WithLogger(logger),
 		httpapi.WithEmailRestriction(cfg.restrictEmail),
 	)
 	return &http.Server{
@@ -193,9 +198,9 @@ func main() {
 	}
 }
 
-func suggestMemory(models provider.Store, ai provider.Client, timeout time.Duration) *suggest.Memory {
+func suggestMemory(models provider.Store, ai provider.Client, pool *pgxpool.Pool, logger *slog.Logger, timeout time.Duration) *suggest.Memory {
 	mem := suggest.NewMemory()
-	mem.UseModel(suggest.ChatModel{Models: models, AI: ai, Timeout: timeout})
+	mem.UseModel(suggest.ChatModel{Models: models, AI: ai, Pool: pool, Logger: logger, Timeout: timeout})
 	return mem
 }
 
@@ -230,6 +235,7 @@ func serveDatabase() error {
 		},
 	}
 	models := provider.Store{Pool: pool, Key: cfg.AESKey, HTTP: aiClient}
+	logger := applog.New(os.Stdout)
 	readerClient := docreader.New(cfg.DocreaderAddr, cfg.DocreaderToken, cfg.DocTimeout)
 	runner := ingest.Runner{
 		Pool:   pool,
@@ -237,6 +243,7 @@ func serveDatabase() error {
 		Reader: readerClient,
 		Models: models,
 		AI:     aiClient,
+		Logger: logger,
 		Chunk: ingest.Config{
 			Min: cfg.ChunkMin, Max: cfg.ChunkMax, Overlap: cfg.ChunkOverlap,
 			ParentMin: cfg.ParentMin, ParentMax: cfg.ParentMax,
@@ -245,6 +252,7 @@ func serveDatabase() error {
 		Timeout:    cfg.DocTimeout,
 	}
 	gw := provider.NewPGGateway(pool, models, aiClient)
+	gw.Logger = logger
 	ret := retrieval.NewEngine(retrieval.NewPGCorpus(pool), gw, retrieval.SearchConfig{
 		TopK:             cfg.TopK,
 		RecallLimit:      20,
@@ -253,7 +261,7 @@ func serveDatabase() error {
 		BM25B:            cfg.BM25B,
 		DefaultThreshold: cfg.Threshold,
 	})
-	graphSvc := graph.Service{Pool: pool, AI: aiClient, Models: models, Timeout: cfg.DocTimeout}
+	graphSvc := graph.Service{Pool: pool, AI: aiClient, Models: models, Logger: logger, Timeout: cfg.DocTimeout}
 	for range max(1, cfg.IngestWorkers) {
 		go jobs.Loop(ctx, pool, []string{"ingest"}, runner.Run)
 	}
@@ -276,7 +284,9 @@ func serveDatabase() error {
 			models,
 			httpapi.WithQA(qaSvc),
 			httpapi.WithGraph(graphSvc),
-			httpapi.WithSuggestions(httpapi.NewLiveSuggestions(suggestMemory(models, aiClient, cfg.DocTimeout), library)),
+			httpapi.WithSuggestions(httpapi.NewLiveSuggestions(suggestMemory(models, aiClient, pool, logger, cfg.DocTimeout), library)),
+			httpapi.WithLogger(logger),
+			httpapi.WithRequestLogSink(applog.PGRequestLogSink{Pool: pool}),
 			httpapi.WithHealthProbe(readerClient.Healthy),
 			httpapi.WithEmailRestriction(cfg.EmailRestrict),
 		),

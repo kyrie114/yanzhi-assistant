@@ -170,3 +170,45 @@ func TestEngineSkipsEmbedWhenScopeEmpty(t *testing.T) {
 		t.Fatalf("expected empty search without embed call, got err=%v len=%d embedCalled=%v", err, len(res.Hits), embedCalled)
 	}
 }
+
+type fakeQuestionRecaller struct {
+	ids []string
+}
+
+func (f fakeQuestionRecaller) QuestionRecall(context.Context, retrieval.Scope, []float32, int64, string, int) ([]string, error) {
+	return f.ids, nil
+}
+
+func TestEngineWithQuestionRecallerAndHydrate(t *testing.T) {
+	store, owner, kb, docID := seedTestLibrary(t)
+	ctx := context.Background()
+	if err := store.SeedChunks(owner, docID, 1,
+		[]knowledge.MemoryParentChunk{{ID: "p1", PageStart: 2, Text: "Parent body"}},
+		[]knowledge.MemoryChunkInput{{ID: "c1", ParentID: "p1", PageStart: 2, ParagraphIndex: 0, Text: "Child body", Embedding: []float32{1, 0}}},
+	); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := store.ResolveScope(ctx, owner, knowledge.ScopeInput{Type: "kb", KBID: kb.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snaps := store.ScopedChunkSnapshots(owner, []string{docID})
+	gw := provider.NewMemoryGateway()
+	gw.EmbedFn = func(context.Context, []string) ([][]float32, error) {
+		return [][]float32{{1, 0}}, nil
+	}
+	engine := retrieval.NewEngine(
+		retrieval.NewMemoryCorpus(knowledgeSource(store)),
+		gw,
+		retrieval.SearchConfig{},
+		retrieval.WithQuestionRecaller(fakeQuestionRecaller{ids: []string{snaps[0].ChunkID}}),
+	)
+	res, err := engine.Search(ctx, "req-q", resolved, "Child")
+	if err != nil || len(res.Hits) != 1 {
+		t.Fatalf("Search with question recaller got hits=%+v err=%v", res.Hits, err)
+	}
+	hydrated, err := engine.Hydrate(ctx, resolved, []string{snaps[0].ChunkID})
+	if err != nil || len(hydrated) != 1 || hydrated[0].ParentText != "Parent body" {
+		t.Fatalf("Hydrate got %+v err=%v", hydrated, err)
+	}
+}

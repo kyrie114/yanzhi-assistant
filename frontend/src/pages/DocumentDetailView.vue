@@ -8,6 +8,7 @@ import {
   listTags,
   patchDocument,
   putDocumentTags,
+  retryDocumentIngest,
 } from '../api/endpoints';
 import { ApiError } from '../api/http';
 import type { Doc, Tag } from '../api/types';
@@ -44,10 +45,15 @@ const tagMsg = ref('');
 const tagError = ref('');
 
 const downloading = ref(false);
+const retrying = ref(false);
 const actionError = ref('');
 
 const confirmDelete = ref(false);
 const deleting = ref(false);
+
+const canRetryIngest = computed(() => {
+  return doc.value !== null && doc.value.status === '失败' && (doc.value.manualRetryCount ?? 0) < 3;
+});
 
 function syncForm(d: Doc): void {
   title.value = d.title;
@@ -187,6 +193,23 @@ async function onConfirmDelete(): Promise<void> {
     deleting.value = false;
   }
 }
+
+async function onRetryIngest(): Promise<void> {
+  actionError.value = '';
+  retrying.value = true;
+  try {
+    await retryDocumentIngest(docId.value);
+    doc.value = await getDocument(docId.value);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404 && err.code === 'HTTP_404') {
+      actionError.value = '当前运行在内存模式，未提供入库重试接口';
+    } else {
+      actionError.value = err instanceof ApiError ? err.message : '重试处理失败';
+    }
+  } finally {
+    retrying.value = false;
+  }
+}
 </script>
 
 <template>
@@ -211,6 +234,15 @@ async function onConfirmDelete(): Promise<void> {
           </RouterLink>
         </div>
         <div class="form-inline">
+          <button
+            v-if="canRetryIngest"
+            type="button"
+            class="btn"
+            :disabled="retrying"
+            @click="onRetryIngest"
+          >
+            {{ retrying ? '正在重试…' : '重试处理' }}
+          </button>
           <button type="button" class="btn btn-primary" :disabled="downloading" @click="onDownload">
             {{ downloading ? '下载中…' : '下载原件 PDF' }}
           </button>
@@ -241,6 +273,13 @@ async function onConfirmDelete(): Promise<void> {
 
       <div v-if="doc.failureReason" class="alert alert-error">
         处理失败原因：{{ doc.failureReason }}
+        <span
+          v-if="doc.status === '失败' && (doc.manualRetryCount ?? 0) >= 3"
+          class="muted"
+          style="margin-left: 8px"
+        >
+          （已达到 3 次手动重试上限，请联系管理员）
+        </span>
       </div>
 
       <div v-if="doc.skippedPages.length > 0" class="alert alert-warn">

@@ -3,6 +3,7 @@ package ingest
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -22,6 +23,7 @@ type Runner struct {
 	Reader     *docreader.Client
 	Models     provider.Store
 	AI         provider.Client
+	Logger     *slog.Logger
 	Chunk      Config
 	EmbedBatch int
 	Timeout    time.Duration
@@ -265,7 +267,7 @@ func (r Runner) embedDocument(ctx context.Context, job jobs.Job, keepText bool) 
 		for i := range part {
 			texts[i] = part[i].text
 		}
-		vecs, err := r.embedRetry(ctx, remote, texts)
+		vecs, err := r.embedRetry(ctx, job, remote, texts)
 		if err != nil {
 			if keepText {
 				_, _ = r.Pool.Exec(ctx, `UPDATE chunks SET embedding = NULL WHERE document_id = $1`, db.MustUUID(job.TargetID))
@@ -303,12 +305,27 @@ func (r Runner) embedDocument(ctx context.Context, job jobs.Job, keepText bool) 
 	return nil
 }
 
-func (r Runner) embedRetry(ctx context.Context, remote provider.Remote, texts []string) ([][]float32, error) {
+func (r Runner) embedRetry(ctx context.Context, job jobs.Job, remote provider.Remote, texts []string) ([][]float32, error) {
 	var last error
 	for attempt := 0; attempt < 3; attempt++ {
+		start := time.Now()
 		callCtx, cancel := context.WithTimeout(ctx, r.timeout())
-		vecs, _, err := r.AI.Embed(callCtx, remote, texts)
+		vecs, usage, err := r.AI.Embed(callCtx, remote, texts)
 		cancel()
+		elapsed := int(time.Since(start).Milliseconds())
+		status := "ok"
+		if err != nil {
+			status = "error"
+		}
+		provider.RecordModelCall(ctx, r.Pool, r.Logger, provider.CallMeta{
+			RequestID: job.RequestID,
+			UserID:    job.OwnerID,
+			Kind:      "embedding",
+			Model:     remote.Model,
+			ElapsedMS: elapsed,
+			Usage:     usage,
+			Status:    status,
+		})
 		if err == nil {
 			return vecs, nil
 		}

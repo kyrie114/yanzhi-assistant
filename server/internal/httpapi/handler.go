@@ -7,11 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"yanzhi/server/internal/account"
 	"yanzhi/server/internal/apperr"
+	"yanzhi/server/internal/platform/applog"
 )
 
 type requestIDKey struct{}
@@ -30,16 +32,31 @@ func WithEmailRestriction(restrict bool) Option {
 	}
 }
 
+func WithLogger(logger *slog.Logger) Option {
+	return func(h *handler) {
+		h.logger = logger
+	}
+}
+
+func WithRequestLogSink(sink applog.RequestLogSink) Option {
+	return func(h *handler) {
+		h.reqLogSink = sink
+	}
+}
+
 type handler struct {
 	svc           *account.Service
 	kb            KnowledgeBackend
 	qa            QABackend
 	graphs        GraphBrowse
 	graphRetry    GraphRetry
+	docRetry      DocumentRetry
 	suggest       suggestionAPI
 	authFn        func(*http.Request) (account.Caller, error)
 	healthProbe   func(context.Context) bool
 	restrictEmail bool
+	logger        *slog.Logger
+	reqLogSink    applog.RequestLogSink
 }
 
 // NewHandler 注册本切片的账户路由，以及用于检查令牌的资料列表。
@@ -59,7 +76,8 @@ func NewHandler(svc *account.Service, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /api/v1/me", h.me)
 
 	h.registerDomainRoutes(mux)
-	return withRequestID(mux)
+	wrapped := applog.AccessMiddleware(h.logger, h.reqLogSink, requestID, nil)(mux)
+	return withRequestID(wrapped)
 }
 
 func (h *handler) register(w http.ResponseWriter, r *http.Request) {

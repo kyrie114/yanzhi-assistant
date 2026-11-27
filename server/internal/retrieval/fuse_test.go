@@ -20,8 +20,9 @@ func TestSQLPredicates(t *testing.T) {
 	if strings.Contains(KeywordSQL, "<=>") {
 		t.Fatal("keyword sql must not apply cosine")
 	}
-	if !strings.Contains(KeywordSQL, "d.owner_id") || !strings.Contains(KeywordSQL, "d.status = 'ready'") {
-		t.Fatal("keyword sql missing owner filter")
+	if !strings.Contains(KeywordSQL, "d.owner_id") || !strings.Contains(KeywordSQL, "d.status = 'ready'") ||
+		!strings.Contains(KeywordSQL, "c.embedding_generation = d.embedding_generation") || !strings.Contains(KeywordSQL, "p.field = 'text'") {
+		t.Fatal("keyword sql missing owner/ready/generation/field filter")
 	}
 	if strings.Contains(RecoverSQL, "manual_retry_count") || !strings.Contains(RecoverSQL, "处理中断，请重试") {
 		t.Fatal("recovery must not touch manual retries")

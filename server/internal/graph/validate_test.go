@@ -22,3 +22,35 @@ func TestMergeKeyAndEvidence(t *testing.T) {
 		t.Fatalf("relations %+v", gotR)
 	}
 }
+
+func TestGraphUnitHelpers(t *testing.T) {
+	v := emptyView()
+	if len(v.Nodes) != 0 || len(v.Edges) != 0 {
+		t.Fatalf("emptyView not empty: %+v", v)
+	}
+	if statusLabel("") != nil {
+		t.Fatal("expected nil statusLabel for empty code")
+	}
+	if got := statusLabel("ready"); got == nil || *got != "已完成" {
+		t.Fatalf("statusLabel(ready) = %v", got)
+	}
+	if (Service{}).timeout().Seconds() != 60 {
+		t.Fatal("expected default 60s timeout")
+	}
+	if itoa(0) != "0" || itoa(42) != "42" {
+		t.Fatal("itoa mismatch")
+	}
+	if nullUUID("") != nil || nullUUID("not-a-uuid") != nil {
+		t.Fatal("expected nil for invalid uuid")
+	}
+	if len(uuidSlice([]string{"not-a-uuid"})) != 0 {
+		t.Fatal("expected empty uuidSlice for invalid input")
+	}
+	ents, rels, err := decodeExtraction("```json\n{\"entities\":[{\"type\":\"method\",\"name\":\"LoRA\",\"alias\":\"c1\"}],\"relations\":[]}\n```")
+	if err != nil || len(ents) != 1 || len(rels) != 0 {
+		t.Fatalf("decodeExtraction fenced failed: %v %v %v", ents, rels, err)
+	}
+	if _, _, err := decodeExtraction("not-json"); err == nil {
+		t.Fatal("expected decodeExtraction error on invalid json")
+	}
+}

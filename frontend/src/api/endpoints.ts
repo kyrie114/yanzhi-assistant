@@ -206,6 +206,12 @@ export function deleteDocument(docId: string): Promise<void> {
   });
 }
 
+export function retryDocumentIngest(docId: string): Promise<void> {
+  return request(`/api/v1/documents/${encodeURIComponent(docId)}/retries`, noop, {
+    method: 'POST',
+  });
+}
+
 export function downloadDocumentFile(docId: string): Promise<{ blob: Blob; filename: string }> {
   return downloadFileBlob(`/api/v1/documents/${encodeURIComponent(docId)}/file`);
 }
