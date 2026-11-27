@@ -3,14 +3,14 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | YZ-RTM-001 |
-| 版本 | 1.4 |
+| 版本 | 1.5 |
 | 状态 | 评审稿 |
-| 日期 | 2026-11-26 |
+| 日期 | 2026-11-27 |
 | 关联文档 | [requirements.md](../docs/requirements/requirements.md)、[user-stories.md](../docs/requirements/user-stories.md)、[acceptance-criteria.md](../docs/requirements/acceptance-criteria.md) |
 
 一行对应一组功能需求与用户故事。一个故事关联多项功能时拆成多行，每条验收标准只出现在一行中。优先级与用户故事一致。
 
-1.1（2026-10-11）建立本表时状态均为待开发。1.2（2026-10-30）只把 FR-04 改为 PDF 文本层已可解析。1.3（2026-11-13）补充内存模式 FR-01、FR-02、FR-03、FR-04（AC-04-04）、FR-05 功能与接口测试（NFR-01 并发压测 AC-01-08、AC-02-11、AC-05-06 待开发；FR-04 扫描件和入库端到端未做）。1.4（2026-11-26）对齐已落地功能与实际测试路径：补充 FR-04 文本层入库链路、FR-06/FR-07/FR-08/FR-09/FR-10/FR-11/FR-13、FR-12 父子块及 NFR-12 部署验证状态。
+1.1（2026-10-11）建立本表时状态均为待开发。1.2（2026-10-30）只把 FR-04 改为 PDF 文本层已可解析。1.3（2026-11-13）补充内存模式 FR-01、FR-02、FR-03、FR-04（AC-04-04）、FR-05 功能与接口测试。1.4（2026-11-26）对齐已落地功能与实际测试路径。1.5（2026-11-27）围绕发布就绪收口 NFR-04/05/06/07/08/09 本地与 CI 自动化门禁、补齐 NFR-01/02/03/10/11 可复现脚本（真机压测与人工抽检诚实标为「脚本已就绪，待真机签收」）。
 
 验证方式：主服务使用 Go 测试，外部模型使用替身；docreader 使用 pytest；浏览器端到端使用 Playwright；评测和页码抽检由人完成。
 
@@ -55,18 +55,18 @@
 
 | 质量需求 | 相关验收 | 验证 | 状态 |
 | --- | --- | --- | --- |
-| NFR-01 | AC-01-08, AC-02-11, AC-05-06 | 20 并发、5 分钟，覆盖登录、资料列表、知识库列表 | 待开发 |
-| NFR-02 | AC-06-07 | 检索计时，含图谱补充 | 待开发 |
-| NFR-03 | AC-03-01 | 10 篇样例，不含图谱抽取 | 待开发 |
-| NFR-04 | AC-02-04, AC-02-05, AC-02-06, AC-02-08 | 边界值 | 待开发 |
-| NFR-05 | AC-04-03, AC-05-05, AC-08-01, AC-08-02, AC-08-05, AC-10-04, AC-19-02, AC-30-06 | 越权访问 | 待开发 |
-| NFR-06 | AC-01-01, AC-01-06, AC-01-07, AC-08-03, AC-08-04, AC-09-02 | 接口与代码审查 | 待开发 |
-| NFR-07 | AC-06-05, AC-24-01, AC-24-03 | 日志扫描 | 待开发 |
-| NFR-08 | AC-03-05, AC-03-06, AC-03-08, AC-07-06 | 超时与进程重启 | 待开发 |
-| NFR-09 | 无单独验收条目 | 主服务与 docreader 分开统计覆盖率 | 待开发 |
-| NFR-10 | AC-06-06, AC-07-01 | 评测脚本与页码抽检 | 待开发 |
-| NFR-11 | 无单独验收条目 | 浏览器检查 | 待开发 |
-| NFR-12 | 无单独验收条目 | 按 README 部署 | 已完成（compose.yaml、README.md、CI compose-smoke） |
+| NFR-01 | AC-01-08, AC-02-11, AC-05-06 | `server/cmd/perfseed`、`perf/k6/nfr01_core_apis.js`（20 并发、5 分钟，要求 server ≥ 4 vCPU） | 脚本已就绪，待真机签收 |
+| NFR-02 | AC-06-07 | `server/cmd/perfseed`（5,000 切块）、`perf/k6/nfr02_qa_latency.js` | 脚本已就绪，待真机签收 |
+| NFR-03 | AC-03-01 | `perf/bench_ingest_10pdfs.py`（10 篇 20 页文本 PDF；CI 已跑 `--dry-run`） | 脚本已就绪，待真机签收 |
+| NFR-04 | AC-02-04, AC-02-05, AC-02-06, AC-02-08 | `server/internal/httpapi/nfr_idor_matrix_test.go`（50MB 精确边界）、`knowledge_test.go`、`pdfcheck_test.go`、`frontend/tests/validate.test.ts` | 已完成（本地/CI 全绿） |
+| NFR-05 | AC-04-03, AC-05-05, AC-08-01, AC-08-02, AC-08-05, AC-10-04, AC-19-02, AC-30-06 | `server/internal/httpapi/nfr_idor_matrix_test.go`、`graph_test.go`、`suggest_mount_test.go`、`browse_pg_test.go` | 第一切片已完成（AC-19-02/AC-30-06 随第二切片开放） |
+| NFR-06 | AC-01-01, AC-01-06, AC-01-07, AC-08-03, AC-08-04, AC-09-02 | `cryptobox/aes_test.go`、`identity/service_pg_test.go`（同秒改密 `sv`）、`password_session_test.go`、`nfr_idor_matrix_test.go`（路径隔离）、`nginx.conf` | 已完成（本地/CI 全绿） |
+| NFR-07 | AC-06-05, AC-24-01, AC-24-03 | `platform/applog/logger_test.go`、`httpapi/nfr_security_log_test.go`（6 类哨兵零泄漏）、`request_logs` 与 `model_call_logs` 全路径落库 | 已完成（本地/CI 全绿） |
+| NFR-08 | AC-03-05, AC-03-06, AC-03-08, AC-07-06 | `jobs/jobs_pg_test.go`、`ingest/fault_test.go`、`graph/attempt_test.go`、`POST /api/v1/documents/{id}/retries` | 已完成（本地单测 + CI PG 故障注入全绿） |
+| NFR-09 | 无单独验收条目 | `.github/workflows/ci.yml`：6 核心 Go 包（`access`/`jobs`/`ingest`/`retrieval`/`graph`/`qa`）逐包 ≥ 70% + `docreader/parser` ≥ 70% | 已完成（CI 门禁生效；无 `TEST_DATABASE_URL` 时跳过 PG 测试） |
+| NFR-10 | AC-06-06, AC-07-01 | `eval/qa_eval.py`（`--mode mock` CI 冒烟通过；`--mode live` 20 题及 0.15–0.55 阈值扫描）、`eval/page_sampling_checklist.md`（6 类 × 5 处） | 脚本已就绪，待真机模型评测与人工抽检签收 |
+| NFR-11 | 无单独验收条目 | `frontend/e2e/layout-1366.spec.ts`、`App.vue` 全简体中文状态；本机已实测 6 页 1366×768 无溢出/无报错 | 第一切片核心界面已实测并配好 E2E 脚本（对照阅读随第二切片补全） |
+| NFR-12 | 无单独验收条目 | `compose.yaml`、`README.md`、`.github/workflows/ci.yml` `compose-smoke` | 已完成 |
 
 ## 3 覆盖
 

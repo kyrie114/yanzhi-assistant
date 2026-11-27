@@ -1,0 +1,22 @@
+[
+  {"id": "Q01", "category": "answerable", "question": "知识库中论文主要针对什么研究问题？", "expect_refusal": false, "min_citations": 1},
+  {"id": "Q02", "category": "answerable", "question": "核心方法是如何降低计算或训练成本的？", "expect_refusal": false, "min_citations": 1},
+  {"id": "Q03", "category": "answerable", "question": "论文使用了哪些公开数据集进行实验验证？", "expect_refusal": false, "min_citations": 1},
+  {"id": "Q04", "category": "answerable", "question": "实验部分主要汇报了哪些评价指标？", "expect_refusal": false, "min_citations": 1},
+  {"id": "Q05", "category": "answerable", "question": "论文提出的模型与基线方法相比有哪些提升？", "expect_refusal": false, "min_citations": 1},
+  {"id": "Q06", "category": "answerable", "question": "消融实验验证了哪个模块最关键？", "expect_refusal": false, "min_citations": 1},
+  {"id": "Q07", "category": "answerable", "question": "作者在训练阶段设置了哪些关键超参数？", "expect_refusal": false, "min_citations": 1},
+  {"id": "Q08", "category": "answerable", "question": "文献指出了现有方法的哪些局限性？", "expect_refusal": false, "min_citations": 1},
+  {"id": "Q09", "category": "answerable", "question": "跨文档来看，不同论文在数据集选择上有何共同点？", "expect_refusal": false, "min_citations": 1},
+  {"id": "Q10", "category": "answerable", "question": "文中是否给出推理延迟或显存占用的对比数据？", "expect_refusal": false, "min_citations": 1},
+  {"id": "Q11", "category": "answerable", "question": "请总结论文中提到的关键架构组件及其职责。", "expect_refusal": false, "min_citations": 1},
+  {"id": "Q12", "category": "answerable", "question": "作者对未来工作提出了哪些改进方向？", "expect_refusal": false, "min_citations": 1},
+  {"id": "Q13", "category": "answerable", "question": "实验是在什么硬件环境下完成的？", "expect_refusal": false, "min_citations": 1},
+  {"id": "Q14", "category": "answerable", "question": "论文如何处理长文本或上下文窗口限制问题？", "expect_refusal": false, "min_citations": 1},
+  {"id": "Q15", "category": "answerable", "question": "文中引用了哪些代表性的先驱工作？", "expect_refusal": false, "min_citations": 1},
+  {"id": "Q16", "category": "out_of_scope", "question": "蛋白质折叠 AlphaFold3 的最新二硫键预测精度是多少？", "expect_refusal": true, "min_citations": 0},
+  {"id": "Q17", "category": "out_of_scope", "question": "2026 年巴黎奥运会乒乓球男单决赛比分是多少？", "expect_refusal": true, "min_citations": 0},
+  {"id": "Q18", "category": "out_of_scope", "question": "请提供某加密货币交易所昨天的实时收盘价格。", "expect_refusal": true, "min_citations": 0},
+  {"id": "Q19", "category": "out_of_scope", "question": "量子纠错表面码在 1000 物理比特下的临床医学指南是什么？", "expect_refusal": true, "min_citations": 0},
+  {"id": "Q20", "category": "out_of_scope", "question": "深海热液喷口古菌基因组的烹饪食谱步骤有哪些？", "expect_refusal": true, "min_citations": 0}
+]

@@ -55,7 +55,7 @@ async function onLogout(): Promise<void> {
           :class="health.docreader === 'serving' ? 'badge-success' : 'badge-warn'"
           :title="`主服务: ${health.status} / docreader: ${health.docreader}`"
         >
-          {{ health.docreader === 'serving' ? '解析服务就绪' : `解析服务: ${health.docreader}` }}
+          {{ health.docreader === 'serving' ? '解析服务就绪' : '解析服务未就绪' }}
         </span>
         <template v-if="isAuthenticated">
           <span class="badge badge-primary">{{ role }}</span>
