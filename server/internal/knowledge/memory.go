@@ -909,6 +909,87 @@ func (m *MemoryStore) SetDocStatusForTest(owner, docID, status string, failureRe
 	return nil
 }
 
+// MemoryReadingDoc 是供内存按页阅读模块读取的只读资料元信息。
+type MemoryReadingDoc struct {
+	ID               string
+	OwnerID          string
+	Title            string
+	SourceType       string
+	Status           string
+	PageCount        int
+	HasPhysicalPages bool
+	HasOriginalFile  bool
+}
+
+// MemoryReadingChunk 是供内存按页阅读模块读取的单页切块片段。
+type MemoryReadingChunk struct {
+	Text string
+}
+
+// ReadingDocMeta 返回属于指定所有者的文档阅读元信息。
+func (m *MemoryStore) ReadingDocMeta(owner, docID string) (MemoryReadingDoc, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	doc, ok := m.docs[docID]
+	if !ok || doc.OwnerID != owner {
+		return MemoryReadingDoc{}, false
+	}
+	pageCount := 0
+	if doc.PageCount != nil {
+		pageCount = *doc.PageCount
+	}
+	hasPhysical := true
+	if doc.HasPhysicalPages != nil {
+		hasPhysical = *doc.HasPhysicalPages
+	}
+	return MemoryReadingDoc{
+		ID:               doc.ID,
+		OwnerID:          doc.OwnerID,
+		Title:            doc.Title,
+		SourceType:       doc.SourceType,
+		Status:           doc.Status,
+		PageCount:        pageCount,
+		HasPhysicalPages: hasPhysical,
+		HasOriginalFile:  strings.EqualFold(doc.SourceType, "pdf") && doc.StorageKey != "",
+	}, true
+}
+
+// ReadingPageChunks 按段落顺序返回文档指定物理页下的只读切块文本。
+func (m *MemoryStore) ReadingPageChunks(owner, docID string, page int) ([]MemoryReadingChunk, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	doc, ok := m.docs[docID]
+	if !ok || doc.OwnerID != owner {
+		return nil, apperr.ErrNotFound
+	}
+	type item struct {
+		para int
+		id   string
+		text string
+	}
+	var matched []item
+	for _, cid := range m.docChunks[docID] {
+		ch, exists := m.chunks[cid]
+		if !exists || ch.PageStart != page {
+			continue
+		}
+		matched = append(matched, item{para: ch.ParagraphIndex, id: ch.ID, text: ch.Text})
+	}
+	sort.Slice(matched, func(i, j int) bool {
+		if matched[i].para != matched[j].para {
+			return matched[i].para < matched[j].para
+		}
+		return matched[i].id < matched[j].id
+	})
+	out := make([]MemoryReadingChunk, len(matched))
+	for i, it := range matched {
+		out[i] = MemoryReadingChunk{Text: it.text}
+	}
+	return out, nil
+}
+
 func cleanStrPtr(s string) *string {
 	s = strings.TrimSpace(s)
 	if s == "" {

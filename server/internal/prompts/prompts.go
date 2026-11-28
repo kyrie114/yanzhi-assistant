@@ -8,6 +8,9 @@ var QASystem string
 //go:embed graph_extract.txt
 var GraphExtract string
 
+//go:embed reading_translate.txt
+var ReadingTranslate string
+
 // Render 只替换模板里原有的 {key}。资料正文里的花括号不会再被扫描，避免死循环。
 func Render(tmpl string, vars map[string]string) string {
 	var b []byte

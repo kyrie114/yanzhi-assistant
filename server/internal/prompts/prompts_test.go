@@ -12,3 +12,18 @@ func TestRenderLeavesBracesInsideValues(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestReadingTranslatePromptRendersSafely(t *testing.T) {
+	if ReadingTranslate == "" {
+		t.Fatal("ReadingTranslate prompt must not be empty")
+	}
+	got := Render(ReadingTranslate, map[string]string{
+		"language":    "简体中文",
+		"title":       "Paper {A}",
+		"page":        "2",
+		"source_text": "Equation {x} + {title}",
+	})
+	if got == ReadingTranslate {
+		t.Fatal("expected placeholders to render")
+	}
+}

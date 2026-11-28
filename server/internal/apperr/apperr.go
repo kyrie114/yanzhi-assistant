@@ -49,6 +49,7 @@ var (
 	ErrUnsupported     = New("UNSUPPORTED_MEDIA", "此接口不接受该文件类型")
 	ErrModelDown       = New("MODEL_UNAVAILABLE", "模型服务暂时不可用，请稍后重试")
 	ErrIdempotency     = New("IDEMPOTENCY_CONFLICT", "这个幂等键已经用于另一份内容")
+	ErrPageOutOfRange  = New("PAGE_OUT_OF_RANGE", "没有这一页")
 	ErrStreamClosed    = New("STREAM_CLOSED", "生成已结束，请从会话记录查看")
 	ErrDocreaderDown   = New("DOCREADER_UNAVAILABLE", "文档解析服务暂不可用")
 )

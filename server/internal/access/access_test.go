@@ -33,4 +33,13 @@ func TestGateOrder(t *testing.T) {
 	if Gate(unverified, ActAsk, true) != EmailUnverified {
 		t.Fatal("restrict on")
 	}
+	if Gate(unverified, ActTranslate, true) != EmailUnverified {
+		t.Fatal("translate restrict on")
+	}
+	if Gate(admin, ActTranslate, false) != NotFound {
+		t.Fatal("admin translate should be 404")
+	}
+	if Gate(user, ActTranslate, false) != Allow {
+		t.Fatal("user translate should be allowed")
+	}
 }

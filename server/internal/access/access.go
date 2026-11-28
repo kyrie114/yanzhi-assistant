@@ -24,6 +24,7 @@ const (
 	ActAdmin      = "admin"
 	ActUpload     = "upload"
 	ActAsk        = "ask"
+	ActTranslate  = "translate"
 )
 
 // Gate 不查业务表。打开资源时，管理员直接 NotFound，避免借角色读到别人的资料。
@@ -54,7 +55,7 @@ func Gate(p *Principal, action string, restrictEmail bool) Decision {
 		return Allow
 	case ActList:
 		return Allow
-	case ActUpload, ActAsk:
+	case ActUpload, ActAsk, ActTranslate:
 		if restrictEmail && p.Role != "admin" && !p.Verified {
 			return EmailUnverified
 		}
