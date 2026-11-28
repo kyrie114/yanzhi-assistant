@@ -23,6 +23,9 @@ func (h *handler) registerDomainRoutes(mux *http.ServeMux) {
 	if h.qa != nil {
 		h.registerQARoutes(mux)
 	}
+	if h.reading != nil {
+		h.registerReadingRoutes(mux)
+	}
 	if h.graphs != nil && h.graphRetry != nil {
 		h.registerGraphRoutes(mux)
 	}

@@ -18,6 +18,7 @@ import (
 	"yanzhi/server/internal/platform/clock"
 	"yanzhi/server/internal/provider"
 	"yanzhi/server/internal/qa"
+	"yanzhi/server/internal/reading"
 	"yanzhi/server/internal/retrieval"
 	"yanzhi/server/internal/suggest"
 )
@@ -74,12 +75,14 @@ func TestNFR05_IDORMatrixAllSlice1Endpoints(t *testing.T) {
 	graphMem := graph.NewMemoryStore()
 	qaStore := qa.NewMemoryStore(qa.WithAliveCheck(qa.MemoryAliveChecker(kbStore)))
 	qaSvc := qa.NewService(context.Background(), qaStore, kbStore, gw, ret, graphMem)
+	readingSvc := reading.NewService(reading.NewMemoryStore(kbStore), gw)
 	docRetry := &nfrFakeDocRetry{}
 	sugFake := &nfrFakeSuggest{}
 
 	h := NewHandler(accSvc,
 		WithKnowledge(kbStore),
 		WithQA(qaSvc),
+		WithReading(readingSvc),
 		WithGraph(nfrFakeGraph{}),
 		WithGraphRetry(fakeRetry{}),
 		WithDocumentRetry(docRetry),
@@ -176,6 +179,8 @@ func TestNFR05_IDORMatrixAllSlice1Endpoints(t *testing.T) {
 		{"put_doc_tags", http.MethodPut, "/api/v1/documents/" + upA.Doc.ID + "/tags", map[string]any{"tag_ids": []string{tagA.ID}}},
 		{"get_doc_suggest", http.MethodGet, "/api/v1/documents/" + upA.Doc.ID + "/suggested-questions", nil},
 		{"get_chunk", http.MethodGet, "/api/v1/documents/" + upA.Doc.ID + "/chunks/" + chunkA, nil},
+		{"get_reading_page", http.MethodGet, "/api/v1/documents/" + upA.Doc.ID + "/pages/1", nil},
+		{"translate_reading_page", http.MethodPost, "/api/v1/documents/" + upA.Doc.ID + "/pages/1/translation", nil},
 		{"patch_tag", http.MethodPatch, "/api/v1/tags/" + tagA.ID, map[string]any{"name": "hack"}},
 		{"delete_tag", http.MethodDelete, "/api/v1/tags/" + tagA.ID, nil},
 		{"get_session", http.MethodGet, "/api/v1/qa/sessions/" + sessA.ID, nil},

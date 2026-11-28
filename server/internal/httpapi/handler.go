@@ -48,6 +48,7 @@ type handler struct {
 	svc           *account.Service
 	kb            KnowledgeBackend
 	qa            QABackend
+	reading       ReadingBackend
 	graphs        GraphBrowse
 	graphRetry    GraphRetry
 	docRetry      DocumentRetry

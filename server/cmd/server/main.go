@@ -36,6 +36,7 @@ import (
 	"yanzhi/server/internal/platform/files"
 	"yanzhi/server/internal/provider"
 	"yanzhi/server/internal/qa"
+	"yanzhi/server/internal/reading"
 	"yanzhi/server/internal/retrieval"
 	"yanzhi/server/internal/suggest"
 )
@@ -125,11 +126,13 @@ func newHTTPServerWithContext(appCtx context.Context, cfg config) *http.Server {
 	graphMem := graph.NewMemoryStore()
 	qaStore := qa.NewMemoryStore(qa.WithAliveCheck(qa.MemoryAliveChecker(kbStore)))
 	qaSvc := qa.NewService(appCtx, qaStore, kbStore, gw, ret, graphMem)
+	readingSvc := reading.NewService(reading.NewMemoryStore(kbStore), gw)
 
 	logger := applog.New(os.Stdout)
 	handler := httpapi.NewHandler(svc,
 		httpapi.WithKnowledge(kbStore),
 		httpapi.WithQA(qaSvc),
+		httpapi.WithReading(readingSvc),
 		httpapi.WithLogger(logger),
 		httpapi.WithEmailRestriction(cfg.restrictEmail),
 	)
@@ -271,6 +274,7 @@ func serveDatabase() error {
 	}
 	qaStore := qa.NewPGStore(pool)
 	qaSvc := qa.NewService(ctx, qaStore, library, gw, ret, graphSvc)
+	readingSvc := reading.NewService(reading.NewPGStore(pool), gw)
 
 	listener, err := net.Listen("tcp", cfg.HTTPAddr)
 	if err != nil {
@@ -283,6 +287,7 @@ func serveDatabase() error {
 			library,
 			models,
 			httpapi.WithQA(qaSvc),
+			httpapi.WithReading(readingSvc),
 			httpapi.WithGraph(graphSvc),
 			httpapi.WithSuggestions(httpapi.NewLiveSuggestions(suggestMemory(models, aiClient, pool, logger, cfg.DocTimeout), library)),
 			httpapi.WithLogger(logger),
