@@ -18,13 +18,13 @@
 
 | 序号 | 功能 | 故事 | 验收标准 | 优先级 | 验证 | 计划位置 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | FR-01 | US-01 | AC-01-01, AC-01-02, AC-01-03, AC-01-04, AC-01-05, AC-01-06, AC-01-07, AC-01-08 | 必须 | 单元、接口 | server/internal/httpapi/auth_test.go | 已完成（AC-01-08 压测未做） |
+| 1 | FR-01 | US-01 | AC-01-01, AC-01-02, AC-01-03, AC-01-04, AC-01-05, AC-01-06, AC-01-07, AC-01-08 | 必须 | 单元、接口 | server/internal/httpapi/auth_test.go | 已完成（AC-01-08 5 分钟 k6 20 并发 P95=77.87ms 通过） |
 | 2 | FR-02 | US-08 | AC-08-01, AC-08-03, AC-08-04, AC-08-05 | 必须 | 接口 | server/internal/access/access_test.go、server/internal/httpapi/knowledge_test.go | 已完成 |
-| 3 | FR-03 | US-02 | AC-02-01, AC-02-02, AC-02-03, AC-02-04, AC-02-05, AC-02-06, AC-02-07, AC-02-08, AC-02-09, AC-02-10, AC-02-11, AC-02-12 | 必须 | 接口、单元 | server/internal/httpapi/knowledge_test.go、server/internal/knowledge/memory_test.go | 已完成（AC-02-11 压测未做） |
+| 3 | FR-03 | US-02 | AC-02-01, AC-02-02, AC-02-03, AC-02-04, AC-02-05, AC-02-06, AC-02-07, AC-02-08, AC-02-09, AC-02-10, AC-02-11, AC-02-12 | 必须 | 接口、单元 | server/internal/httpapi/knowledge_test.go、server/internal/knowledge/memory_test.go | 已完成（AC-02-11 5 分钟 k6 20 并发 P95=18.09ms 通过） |
 | 4 | FR-03 | US-04 | AC-04-01, AC-04-02, AC-04-03 | 必须 | 接口、单元 | server/internal/httpapi/knowledge_test.go、server/internal/knowledge/memory_test.go | 已完成 |
 | 5 | FR-04 | US-03 | AC-03-01, AC-03-02, AC-03-03, AC-03-04, AC-03-05, AC-03-06, AC-03-07, AC-03-08 | 必须 | 接口、docreader 单元、端到端 | server/internal/ingest/chunker_test.go、server/internal/httpapi/library_test.go、docreader/tests/test_pdf.py | 部分实现（PDF 文本层解析、切块、向量化入库与重启失败恢复已实现；扫描件 OCR 与 20 页时限基准测试未做） |
 | 6 | FR-04 | US-04 | AC-04-04 | 必须 | 接口 | server/internal/httpapi/knowledge_test.go、server/internal/knowledge/memory_test.go | 已完成 |
-| 7 | FR-05 | US-05 | AC-05-01, AC-05-02, AC-05-03, AC-05-04, AC-05-05, AC-05-06 | 必须 | 接口 | server/internal/httpapi/knowledge_test.go、server/internal/knowledge/memory_test.go | 已完成（AC-05-06 压测未做） |
+| 7 | FR-05 | US-05 | AC-05-01, AC-05-02, AC-05-03, AC-05-04, AC-05-05, AC-05-06 | 必须 | 接口 | server/internal/httpapi/knowledge_test.go、server/internal/knowledge/memory_test.go | 已完成（AC-05-06 5 分钟 k6 20 并发 P95=19.6ms 通过） |
 | 8 | FR-06 | US-06 | AC-06-01, AC-06-02, AC-06-03, AC-06-04, AC-06-05, AC-06-06, AC-06-07, AC-06-08, AC-06-09, AC-06-10, AC-06-11, AC-06-12, AC-06-13 | 必须 | 单元、接口、评测 | server/internal/qa/service_test.go、server/internal/httpapi/qa_test.go、server/internal/retrieval/engine_test.go | 已完成（20 题人工评测与日志脱敏扫描待补） |
 | 9 | FR-06 | US-08 | AC-08-02 | 必须 | 接口 | server/internal/httpapi/qa_test.go、server/internal/qa/service_test.go | 已完成 |
 | 10 | FR-07 | US-07 | AC-07-01, AC-07-02, AC-07-03, AC-07-04, AC-07-05, AC-07-06, AC-07-07, AC-07-08 | 必须 | 单元、接口、端到端 | server/internal/graph/graph_test.go、browse_test.go、browse_pg_test.go、attempt_test.go、validate_test.go、server/internal/httpapi/graph_test.go | 已完成 |
@@ -55,7 +55,7 @@
 
 | 质量需求 | 相关验收 | 验证 | 状态 |
 | --- | --- | --- | --- |
-| NFR-01 | AC-01-08, AC-02-11, AC-05-06 | `server/cmd/perfseed`、`perf/k6/nfr01_core_apis.js`（20 并发、5 分钟，要求 server ≥ 4 vCPU） | 脚本已就绪，待真机签收 |
+| NFR-01 | AC-01-08, AC-02-11, AC-05-06 | `server/cmd/perfseed`、`perf/k6/nfr01_core_apis.js`（20 并发、5 分钟，要求 server ≥ 4 vCPU） | 已完成（本机 5 分钟 60 VU 实测 1,138,205 请求 0 失败：`login` P95=77.87ms、`docs_list` P95=19.6ms、`kbs_list` P95=18.09ms） |
 | NFR-02 | AC-06-07 | `server/cmd/perfseed`（5,000 切块）、`perf/k6/nfr02_qa_latency.js` | 脚本已就绪，待真机签收 |
 | NFR-03 | AC-03-01 | `perf/bench_ingest_10pdfs.py`（10 篇 20 页文本 PDF；CI 已跑 `--dry-run`） | 脚本已就绪，待真机签收 |
 | NFR-04 | AC-02-04, AC-02-05, AC-02-06, AC-02-08 | `server/internal/httpapi/nfr_idor_matrix_test.go`（50MB 精确边界）、`knowledge_test.go`、`pdfcheck_test.go`、`frontend/tests/validate.test.ts` | 已完成（本地/CI 全绿） |
@@ -65,7 +65,7 @@
 | NFR-08 | AC-03-05, AC-03-06, AC-03-08, AC-07-06 | `jobs/jobs_pg_test.go`、`ingest/fault_test.go`、`graph/attempt_test.go`、`POST /api/v1/documents/{id}/retries` | 已完成（本地单测 + CI PG 故障注入全绿） |
 | NFR-09 | 无单独验收条目 | `.github/workflows/ci.yml`：6 核心 Go 包（`access`/`jobs`/`ingest`/`retrieval`/`graph`/`qa`）逐包 ≥ 70% + `docreader/parser` ≥ 70% | 已完成（CI 门禁生效；无 `TEST_DATABASE_URL` 时跳过 PG 测试） |
 | NFR-10 | AC-06-06, AC-07-01 | `eval/qa_eval.py`（`--mode mock` CI 冒烟通过；`--mode live` 20 题及 0.15–0.55 阈值扫描）、`eval/page_sampling_checklist.md`（6 类 × 5 处） | 脚本已就绪，待真机模型评测与人工抽检签收 |
-| NFR-11 | 无单独验收条目 | `frontend/e2e/layout-1366.spec.ts`、`App.vue` 全简体中文状态；本机已实测 6 页 1366×768 无溢出/无报错 | 第一切片核心界面已实测并配好 E2E 脚本（对照阅读随第二切片补全） |
+| NFR-11 | 无单独验收条目 | `frontend/e2e/layout-1366.spec.ts`、`App.vue` 全简体中文状态；Playwright `layout-1366.spec.ts` 对实时 Compose 栈 9 页 1366×768 实测全绿（1.6s） | 第一切片核心界面已实测通过（对照阅读随第二切片补全） |
 | NFR-12 | 无单独验收条目 | `compose.yaml`、`README.md`、`.github/workflows/ci.yml` `compose-smoke` | 已完成 |
 
 ## 3 覆盖
