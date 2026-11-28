@@ -523,9 +523,52 @@ th {
   white-space: pre-wrap;
 }
 
+.reading-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.reading-panel {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.reading-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--surface-subtle);
+}
+
+.reading-pdf-frame {
+  width: 100%;
+  height: calc(100vh - 240px);
+  min-height: 460px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+}
+
+.reading-text-box {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.7;
+  max-height: calc(100vh - 240px);
+  min-height: 240px;
+  overflow-y: auto;
+  padding: 4px 2px;
+}
+
 @media (max-width: 960px) {
   .grid-2,
-  .qa-layout {
+  .qa-layout,
+  .reading-layout {
     grid-template-columns: 1fr;
   }
 }

@@ -234,6 +234,22 @@ async function onRetryIngest(): Promise<void> {
           </RouterLink>
         </div>
         <div class="form-inline">
+          <RouterLink
+            v-if="doc.status === '已完成'"
+            class="btn"
+            :to="`/documents/${doc.id}/reading?page=1`"
+          >
+            对照阅读
+          </RouterLink>
+          <button
+            v-else
+            type="button"
+            class="btn"
+            disabled
+            title="资料尚未完成，暂不可对照阅读"
+          >
+            对照阅读（未就绪）
+          </button>
           <button
             v-if="canRetryIngest"
             type="button"

@@ -206,6 +206,17 @@ export interface ProbeResult {
   elapsedMs: number;
 }
 
+export interface ReadingPage {
+  title: string;
+  sourceType: string;
+  page: number;
+  pageCount: number;
+  hasOriginalFile: boolean;
+  sourceText: string;
+  translation: string | null;
+  cached: boolean;
+}
+
 export type UnknownRecord = Record<string, unknown>;
 
 export function isRecord(val: unknown): val is UnknownRecord {
@@ -650,6 +661,20 @@ export function parseProbeResult(raw: unknown): ProbeResult {
     result: parseProbeStatus(obj.result),
     message: optString(obj, 'message', ''),
     elapsedMs: optNumber(obj, 'elapsed_ms', 0),
+  };
+}
+
+export function parseReadingPage(raw: unknown): ReadingPage {
+  const obj = expectRecord(raw, 'ReadingPage');
+  return {
+    title: optString(obj, 'title', ''),
+    sourceType: optString(obj, 'source_type', ''),
+    page: optNumber(obj, 'page', 1),
+    pageCount: Math.max(1, optNumber(obj, 'page_count', 1)),
+    hasOriginalFile: optBoolean(obj, 'has_original_file', false),
+    sourceText: optString(obj, 'source_text', ''),
+    translation: optNullableString(obj, 'translation'),
+    cached: optBoolean(obj, 'cached', false),
   };
 }
 

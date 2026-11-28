@@ -526,6 +526,13 @@ onBeforeUnmount(stopPoll);
               >
                 <RouterLink :to="`/documents/${source.documentId}`">{{ source.title }}</RouterLink>
                 第 {{ source.pageStart }} 页
+                <RouterLink
+                  class="btn btn-sm"
+                  style="margin-left: 8px"
+                  :to="`/documents/${source.documentId}/reading?page=${source.pageStart}`"
+                >
+                  对照阅读
+                </RouterLink>
               </li>
             </ul>
           </template>
@@ -539,9 +546,17 @@ onBeforeUnmount(stopPoll);
               style="margin-bottom: 12px"
             >
               <p>{{ item.sentence }}</p>
-              <button type="button" class="btn btn-sm" @click="openChunk(item.documentId, item.chunkId)">
-                查看第 {{ item.pageStart }} 页切块
-              </button>
+              <div class="form-inline" style="gap: 8px">
+                <button type="button" class="btn btn-sm" @click="openChunk(item.documentId, item.chunkId)">
+                  查看第 {{ item.pageStart }} 页切块
+                </button>
+                <RouterLink
+                  class="btn btn-sm"
+                  :to="`/documents/${item.documentId}/reading?page=${item.pageStart}`"
+                >
+                  对照阅读
+                </RouterLink>
+              </div>
             </div>
             <div v-if="chunkError" class="alert alert-error">{{ chunkError }}</div>
             <div v-if="chunkDetail" class="citation-detail">{{ chunkDetail.text }}</div>

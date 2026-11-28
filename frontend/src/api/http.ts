@@ -190,6 +190,58 @@ export interface SSEConnection {
   stream: ReadableStream<Uint8Array>;
 }
 
+export type ReadingTranslationResponse =
+  | { kind: 'empty'; message: string }
+  | { kind: 'stream'; stream: ReadableStream<Uint8Array> };
+
+export async function openSSEOrJSON(
+  path: string,
+  options: { method?: string; body?: unknown; signal?: AbortSignal } = {},
+): Promise<ReadingTranslationResponse> {
+  const headers = buildHeaders({ Accept: 'text/event-stream' });
+  let body: BodyInit | undefined;
+  if (options.body !== undefined) {
+    headers.set('Content-Type', 'application/json; charset=utf-8');
+    body = JSON.stringify(options.body);
+  }
+
+  const res = await fetch(path, {
+    method: options.method ?? 'POST',
+    headers,
+    body,
+    signal: options.signal,
+  });
+
+  if (!res.ok) {
+    const err = await parseApiError(res);
+    handleErrorSideEffects(err, false);
+    throw err;
+  }
+
+  const ct = (res.headers.get('Content-Type') ?? '').toLowerCase();
+  if (ct.includes('application/json')) {
+    const data: unknown = await res.json().catch(() => ({}));
+    const msg =
+      typeof data === 'object' &&
+      data !== null &&
+      typeof (data as { message?: unknown }).message === 'string'
+        ? (data as { message: string }).message
+        : '本页没有可翻译的正文';
+    return { kind: 'empty', message: msg };
+  }
+
+  if (!res.body) {
+    throw new ApiError({
+      status: res.status,
+      code: 'STREAM_EMPTY',
+      message: '服务端未返回事件流',
+      requestId: res.headers.get('X-Request-Id') ?? '',
+      details: {},
+    });
+  }
+  return { kind: 'stream', stream: res.body };
+}
+
 export async function openSSE(
   path: string,
   options: { method?: string; body?: unknown; signal?: AbortSignal } = {},

@@ -70,6 +70,12 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, role: '注册用户' },
   },
   {
+    path: '/documents/:id/reading',
+    name: 'document-reading',
+    component: () => import('./pages/ReadingView.vue'),
+    meta: { requiresAuth: true, role: '注册用户' },
+  },
+  {
     path: '/qa/:sessionId?',
     name: 'qa',
     component: () => import('./pages/QAView.vue'),

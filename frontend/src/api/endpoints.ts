@@ -1,4 +1,11 @@
-import { downloadFileBlob, openSSE, request, type SSEConnection } from './http';
+import {
+  downloadFileBlob,
+  openSSE,
+  openSSEOrJSON,
+  request,
+  type ReadingTranslationResponse,
+  type SSEConnection,
+} from './http';
 import {
   parseChunkDetail,
   parseDoc,
@@ -18,6 +25,7 @@ import {
   parsePublicUser,
   parseQASession,
   parseQASessionPage,
+  parseReadingPage,
   parseTag,
   parseTagList,
   parseUnresolvedReferences,
@@ -40,6 +48,7 @@ import {
   type PublicUser,
   type QAScope,
   type QASession,
+  type ReadingPage,
   type Tag,
   type UnresolvedReferences,
 } from './types';
@@ -214,6 +223,24 @@ export function retryDocumentIngest(docId: string): Promise<void> {
 
 export function downloadDocumentFile(docId: string): Promise<{ blob: Blob; filename: string }> {
   return downloadFileBlob(`/api/v1/documents/${encodeURIComponent(docId)}/file`);
+}
+
+export function getDocumentPage(docId: string, page: number): Promise<ReadingPage> {
+  return request(
+    `/api/v1/documents/${encodeURIComponent(docId)}/pages/${encodeURIComponent(String(page))}`,
+    parseReadingPage,
+  );
+}
+
+export function startPageTranslation(
+  docId: string,
+  page: number,
+  signal?: AbortSignal,
+): Promise<ReadingTranslationResponse> {
+  return openSSEOrJSON(
+    `/api/v1/documents/${encodeURIComponent(docId)}/pages/${encodeURIComponent(String(page))}/translation`,
+    { method: 'POST', signal },
+  );
 }
 
 export function getSuggestedQuestions(

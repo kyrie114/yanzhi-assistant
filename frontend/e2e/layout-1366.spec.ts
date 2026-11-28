@@ -83,5 +83,8 @@ test('NFR-11: 核心界面在 1366x768 视口下布局完整、无横向溢出�
   await page.goto('/settings');
   await assertGeometricLayout(page, '/settings', ['.page-title', 'button[type="submit"]']);
 
+  await page.goto('/documents/00000000-0000-0000-0000-000000000000/reading?page=1');
+  await assertGeometricLayout(page, '/documents/:id/reading', ['.app-header', '.breadcrumb', '.reading-pager']);
+
   expect(errors, `发现页面运行时错误:\n${errors.join('\n')}`).toEqual([]);
 });

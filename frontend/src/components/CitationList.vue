@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue';
+import { RouterLink } from 'vue-router';
 import { getChunkDetail } from '../api/endpoints';
 import { ApiError } from '../api/http';
 import type { ChunkDetail, Citation } from '../api/types';
 
-defineProps<{
+const props = defineProps<{
   citations: Citation[];
 }>();
 
@@ -13,6 +14,12 @@ const loadingKey = ref<string | null>(null);
 const cache = reactive<Record<string, ChunkDetail>>({});
 const errors = reactive<Record<string, string>>({});
 
+const selectedCitation = computed(() => {
+  if (!selectedKey.value) {
+    return null;
+  }
+  return props.citations.find((c, idx) => keyOf(c, idx) === selectedKey.value) ?? null;
+});
 const selectedDetail = computed(() =>
   selectedKey.value ? (cache[selectedKey.value] ?? null) : null,
 );
@@ -84,8 +91,17 @@ async function toggleCitation(c: Citation, idx: number): Promise<void> {
       {{ selectedError }}
     </div>
     <div v-else-if="selectedDetail" class="citation-detail">
-      <div style="font-weight: 600; margin-bottom: 6px">
-        第 {{ selectedDetail.pageStart }} 页 · 命中片段
+      <div class="form-inline" style="justify-content: space-between; margin-bottom: 6px">
+        <span style="font-weight: 600">
+          第 {{ selectedDetail.pageStart }} 页 · 命中片段
+        </span>
+        <RouterLink
+          v-if="selectedCitation?.documentId"
+          class="btn btn-sm"
+          :to="`/documents/${selectedCitation.documentId}/reading?page=${selectedDetail.pageStart}`"
+        >
+          按页对照阅读（第 {{ selectedDetail.pageStart }} 页）
+        </RouterLink>
       </div>
       <div>{{ selectedDetail.text }}</div>
       <template
