@@ -175,18 +175,34 @@ func TestIngestFaultInjectionAndReembedPG(t *testing.T) {
 	if st != "failed" || reason != apperr.MsgDocreader {
 		t.Fatalf("docreader fail got status=%s reason=%s", st, reason)
 	}
+	if err := jobs.Fail(ctx, pool, job.ID, reason); err != nil {
+		t.Fatalf("jobs.Fail 1: %v", err)
+	}
 
 	// 2. Missing file -> failed with MsgCorrupted
 	_ = store.Delete(key)
-	_ = jobs.Enqueue(ctx, pool, "ingest", owner, docID, uuid.NewString(), 10, 1)
-	job2, _ := jobs.Claim(ctx, pool, []string{"ingest"})
+	if err := jobs.Enqueue(ctx, pool, "ingest", owner, docID, uuid.NewString(), 10, 1); err != nil {
+		t.Fatalf("enqueue 2: %v", err)
+	}
+	job2, err := jobs.Claim(ctx, pool, []string{"ingest"})
+	if err != nil || job2 == nil {
+		t.Fatalf("claim 2: %v %+v", err, job2)
+	}
 	if err := runner.Run(ctx, *job2); err == nil {
 		t.Fatal("expected missing file failure")
 	}
+	if err := jobs.Fail(ctx, pool, job2.ID, apperr.MsgCorrupted); err != nil {
+		t.Fatalf("jobs.Fail 2: %v", err)
+	}
 
 	// 3. Direct storeChunks + embed failure (3 retries -> MsgEmbedDown) + Reembed recovery
-	_ = jobs.Enqueue(ctx, pool, "reembed", owner, docID, uuid.NewString(), 10, 1)
-	job3, _ := jobs.Claim(ctx, pool, []string{"reembed"})
+	if err := jobs.Enqueue(ctx, pool, "reembed", owner, docID, uuid.NewString(), 10, 1); err != nil {
+		t.Fatalf("enqueue 3: %v", err)
+	}
+	job3, err := jobs.Claim(ctx, pool, []string{"reembed"})
+	if err != nil || job3 == nil {
+		t.Fatalf("claim 3: %v %+v", err, job3)
+	}
 	gen, _ := models.ActiveGeneration(ctx)
 	chunks, parents := Pack([]Page{{PageNo: 1, Blocks: []Block{{Kind: "paragraph", Text: "LoRA fine tuning method"}}}}, DefaultConfig())
 	if err := runner.storeChunks(ctx, *job3, docreader.Result{PageCount: 1, HasPhysicalPages: true}, chunks, parents, gen); err != nil {
@@ -201,13 +217,24 @@ func TestIngestFaultInjectionAndReembedPG(t *testing.T) {
 	if st != "failed" || reason != apperr.MsgEmbedDown {
 		t.Fatalf("embed fail got status=%s reason=%s", st, reason)
 	}
+	if err := jobs.Fail(ctx, pool, job3.ID, reason); err != nil {
+		t.Fatalf("jobs.Fail 3: %v", err)
+	}
 
 	// 4. Reembed succeeds & records model_call_logs
 	embedFail.Store(false)
-	_ = jobs.Enqueue(ctx, pool, "reembed", owner, docID, uuid.NewString(), 10, 1)
-	job4, _ := jobs.Claim(ctx, pool, []string{"reembed"})
+	if err := jobs.Enqueue(ctx, pool, "reembed", owner, docID, uuid.NewString(), 10, 1); err != nil {
+		t.Fatalf("enqueue 4: %v", err)
+	}
+	job4, err := jobs.Claim(ctx, pool, []string{"reembed"})
+	if err != nil || job4 == nil {
+		t.Fatalf("claim 4: %v %+v", err, job4)
+	}
 	if err := runner.Reembed(ctx, *job4); err != nil {
 		t.Fatalf("Reembed recover failed: %v", err)
+	}
+	if err := jobs.Succeed(ctx, pool, job4.ID); err != nil {
+		t.Fatalf("jobs.Succeed 4: %v", err)
 	}
 	_ = pool.QueryRow(ctx, `SELECT status FROM documents WHERE id = $1::uuid`, db.MustUUID(docID)).Scan(&st)
 	if st != "ready" {

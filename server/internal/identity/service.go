@@ -170,7 +170,7 @@ func (s *Service) Authenticate(ctx context.Context, raw string) (Principal, erro
 			return nil, apperr.ErrUnauthenticated
 		}
 		return s.Secret, nil
-	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithTimeFunc(s.Clock.Now))
 	if err != nil || claims.Subject == "" || claims.ID == "" || claims.IssuedAt == nil || claims.ExpiresAt == nil {
 		return Principal{}, apperr.ErrUnauthenticated
 	}

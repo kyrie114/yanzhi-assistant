@@ -56,6 +56,7 @@ func TestPGCorpusVectorKeywordAndHydration(t *testing.T) {
 	docReady := uuid.NewString()
 	docPending := uuid.NewString()
 	parentID := uuid.NewString()
+	parentPending := uuid.NewString()
 	chunkCurr := uuid.NewString()
 	chunkStale := uuid.NewString()
 	chunkPending := uuid.NewString()
@@ -93,7 +94,8 @@ func TestPGCorpusVectorKeywordAndHydration(t *testing.T) {
 	}
 	_, err = pool.Exec(ctx, `
 		INSERT INTO parent_chunks (id, document_id, position, page_start, text)
-		VALUES ($1::uuid, $2::uuid, 0, 4, 'Parent context paragraph for LoRA')`, parentID, docReady)
+		VALUES ($1::uuid, $2::uuid, 0, 4, 'Parent context paragraph for LoRA'),
+		       ($3::uuid, $4::uuid, 0, 1, 'Pending parent context')`, parentID, docReady, parentPending, docPending)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,10 +118,10 @@ func TestPGCorpusVectorKeywordAndHydration(t *testing.T) {
 
 	_, err = pool.Exec(ctx, `
 		INSERT INTO chunks (id, document_id, parent_id, kind, page_start, paragraph_index, overlap_prefix, text, version_no, char_count, term_count, embedding, embedding_generation, created_at, updated_at)
-		VALUES ($1::uuid, $2::uuid, $3::uuid, 'paragraph', 4, 0, '', 'ZephyrBench9 exact method', 1, 24, 3, $4, 2, now(), now()),
-		       ($5::uuid, $2::uuid, $3::uuid, 'paragraph', 5, 1, '', 'ZephyrBench9 stale gen', 1, 22, 3, $4, 1, now(), now()),
-		       ($6::uuid, $7::uuid, NULL, 'paragraph', 1, 0, '', 'ZephyrBench9 pending doc', 1, 24, 3, $4, 2, now(), now())`,
-		chunkCurr, docReady, parentID, makeVec(1, 0), chunkStale, chunkPending, docPending)
+		VALUES ($1::uuid, $2::uuid, $3::uuid, 'paragraph', 4, 0, 0, 'ZephyrBench9 exact method', 1, 24, 3, $4, 2, now(), now()),
+		       ($5::uuid, $2::uuid, $3::uuid, 'paragraph', 5, 1, 0, 'ZephyrBench9 stale gen', 1, 22, 3, $4, 1, now(), now()),
+		       ($6::uuid, $7::uuid, $8::uuid, 'paragraph', 1, 0, 0, 'ZephyrBench9 pending doc', 1, 24, 3, $4, 2, now(), now())`,
+		chunkCurr, docReady, parentID, makeVec(1, 0), chunkStale, chunkPending, docPending, parentPending)
 	if err != nil {
 		t.Fatal(err)
 	}

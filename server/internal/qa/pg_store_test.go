@@ -48,6 +48,7 @@ func TestPGStoreSessionTurnsAndCitations(t *testing.T) {
 	other := uuid.NewString()
 	kbID := uuid.NewString()
 	docID := uuid.NewString()
+	parentID := uuid.NewString()
 	chunkID := uuid.NewString()
 
 	t.Cleanup(func() {
@@ -67,9 +68,18 @@ func TestPGStoreSessionTurnsAndCitations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _ = pool.Exec(ctx, `INSERT INTO knowledge_bases (id, owner_id, name, created_at, updated_at) VALUES ($1::uuid, $2::uuid, 'qa-kb', now(), now())`, kbID, owner)
-	_, _ = pool.Exec(ctx, `INSERT INTO documents (id, owner_id, kb_id, source_type, title, status, created_at, updated_at) VALUES ($1::uuid, $2::uuid, $3::uuid, 'pdf', 'QADoc', 'ready', now(), now())`, docID, owner, kbID)
-	_, _ = pool.Exec(ctx, `INSERT INTO chunks (id, document_id, kind, page_start, paragraph_index, overlap_prefix, text, version_no, char_count, term_count, embedding_generation, created_at, updated_at) VALUES ($1::uuid, $2::uuid, 'paragraph', 3, 0, '', 'chunk text', 1, 10, 2, 1, now(), now())`, chunkID, docID)
+	if _, err := pool.Exec(ctx, `INSERT INTO knowledge_bases (id, owner_id, name, created_at, updated_at) VALUES ($1::uuid, $2::uuid, 'qa-kb', now(), now())`, kbID, owner); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO documents (id, owner_id, kb_id, source_type, title, status, created_at, updated_at) VALUES ($1::uuid, $2::uuid, $3::uuid, 'pdf', 'QADoc', 'ready', now(), now())`, docID, owner, kbID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO parent_chunks (id, document_id, position, page_start, text) VALUES ($1::uuid, $2::uuid, 0, 3, 'parent text')`, parentID, docID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO chunks (id, document_id, parent_id, kind, page_start, paragraph_index, overlap_prefix, text, version_no, char_count, term_count, embedding_generation, created_at, updated_at) VALUES ($1::uuid, $2::uuid, $3::uuid, 'paragraph', 3, 0, 0, 'chunk text', 1, 10, 2, 1, now(), now())`, chunkID, docID, parentID); err != nil {
+		t.Fatal(err)
+	}
 
 	sess, err := store.CreateSession(ctx, owner, "")
 	if err != nil || sess.Title != "新会话" {

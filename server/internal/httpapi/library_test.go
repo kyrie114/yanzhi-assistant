@@ -112,6 +112,14 @@ func TestUploadUsesDocreaderWhenDatabaseIsConfigured(t *testing.T) {
 	authMu.Unlock()
 
 	token := registerLibraryUser(t, handler)
+	t.Cleanup(func() {
+		bg := context.Background()
+		_, _ = pool.Exec(bg, `DELETE FROM model_call_logs WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'lib-%@example.com')`)
+		_, _ = pool.Exec(bg, `DELETE FROM jobs WHERE owner_id IN (SELECT id FROM users WHERE email LIKE 'lib-%@example.com')`)
+		_, _ = pool.Exec(bg, `DELETE FROM documents WHERE owner_id IN (SELECT id FROM users WHERE email LIKE 'lib-%@example.com')`)
+		_, _ = pool.Exec(bg, `DELETE FROM knowledge_bases WHERE owner_id IN (SELECT id FROM users WHERE email LIKE 'lib-%@example.com')`)
+		_, _ = pool.Exec(bg, `DELETE FROM users WHERE email LIKE 'lib-%@example.com'`)
+	})
 
 	rec := jsonRequest(t, handler, http.MethodPost, "/api/v1/kbs", token, map[string]string{"name": "论文"})
 	if rec.Code != http.StatusCreated {

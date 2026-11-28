@@ -150,6 +150,14 @@ func main() {
 			log.Fatalf("insert doc %d: %v", d, err)
 		}
 
+		parentID := uuid.NewString()
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO parent_chunks (id, document_id, position, page_start, text)
+			VALUES ($1::uuid, $2::uuid, 0, 1, $3)`,
+			parentID, docID, fmt.Sprintf("Document %03d parent context for LoRA adaptation and ZephyrBench.", d+1)); err != nil {
+			log.Fatalf("insert parent %d: %v", d, err)
+		}
+
 		for c := 0; c < chunksPerDoc; c++ {
 			chunkID := uuid.NewString()
 			if d == 0 && c == 0 {
@@ -162,9 +170,9 @@ func main() {
 			terms := textutil.Terms(text)
 			vec := deterministicVec(dim, d*chunksPerDoc+c)
 			_, err := tx.Exec(ctx, `
-				INSERT INTO chunks (id, document_id, kind, page_start, paragraph_index, overlap_prefix, text, version_no, char_count, term_count, embedding, embedding_generation, created_at, updated_at)
-				VALUES ($1::uuid, $2::uuid, 'paragraph', $3, $4, '', $5, 1, $6, $7, $8, $9, now(), now())`,
-				chunkID, docID, c+1, c, text, len([]rune(text)), len(terms), vec, gen)
+				INSERT INTO chunks (id, document_id, parent_id, kind, page_start, paragraph_index, overlap_prefix, text, version_no, char_count, term_count, embedding, embedding_generation, created_at, updated_at)
+				VALUES ($1::uuid, $2::uuid, $3::uuid, 'paragraph', $4, $5, 0, $6, 1, $7, $8, $9, $10, now(), now())`,
+				chunkID, docID, parentID, c+1, c, text, len([]rune(text)), len(terms), vec, gen)
 			if err != nil {
 				log.Fatalf("insert chunk %d-%d: %v", d, c, err)
 			}
@@ -193,20 +201,26 @@ func main() {
 	paperEnt := uuid.NewString()
 	methodEnt := uuid.NewString()
 	relID := uuid.NewString()
-	_, _ = tx.Exec(ctx, `
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO kg_entities (id, owner_id, type, name, merge_key, document_id, created_at)
 		VALUES ($1::uuid, $2::uuid, 'paper', 'Perf Paper 001', $3, $4::uuid, now()),
 		       ($5::uuid, $2::uuid, 'method', 'LoRA', 'method:lora', NULL, now())`,
-		paperEnt, mainUID, "paper:"+firstDocID, firstDocID, methodEnt)
-	_, _ = tx.Exec(ctx, `
+		paperEnt, mainUID, "paper:"+firstDocID, firstDocID, methodEnt); err != nil {
+		log.Fatalf("insert kg_entities: %v", err)
+	}
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO kg_relations (id, owner_id, type, source_id, target_id, suspended, created_at)
 		VALUES ($1::uuid, $2::uuid, 'proposes', $3::uuid, $4::uuid, false, now())`,
-		relID, mainUID, paperEnt, methodEnt)
-	_, _ = tx.Exec(ctx, `
-		INSERT INTO kg_evidence (id, relation_id, document_id, chunk_id, page_start, sentence)
-		VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 1, 'LoRA adaptation'),
-		       ($5::uuid, $2::uuid, $3::uuid, $6::uuid, 2, 'ZephyrBench evaluation')`,
-		uuid.NewString(), relID, firstDocID, firstChunkID, uuid.NewString(), secondChunkID)
+		relID, mainUID, paperEnt, methodEnt); err != nil {
+		log.Fatalf("insert kg_relations: %v", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO kg_evidence (id, relation_id, document_id, chunk_id, chunk_version, page_start, sentence, created_at)
+		VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 1, 1, 'LoRA adaptation', now()),
+		       ($5::uuid, $2::uuid, $3::uuid, $6::uuid, 1, 2, 'ZephyrBench evaluation', now())`,
+		uuid.NewString(), relID, firstDocID, firstChunkID, uuid.NewString(), secondChunkID); err != nil {
+		log.Fatalf("insert kg_evidence: %v", err)
+	}
 
 	if err := tx.Commit(ctx); err != nil {
 		log.Fatalf("commit: %v", err)

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -195,8 +196,10 @@ func TestJobsLifecycleAndNFR08Recovery(t *testing.T) {
 		{"cancel", func(context.Context, Job) error { return ErrCancelled }},
 		{"panic", func(context.Context, Job) error { panic("worker panic") }},
 	} {
-		_ = Enqueue(ctx, pool, "ingest", owner, docID, uuid.NewString(), 10, 1)
-		loopCtx, cancel := context.WithCancel(ctx)
+		if err := Enqueue(ctx, pool, "ingest", owner, docID, uuid.NewString(), 10, 1); err != nil {
+			t.Fatalf("Enqueue %s: %v", tc.name, err)
+		}
+		loopCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
@@ -206,6 +209,7 @@ func TestJobsLifecycleAndNFR08Recovery(t *testing.T) {
 			})
 		}()
 		<-done
+		cancel()
 	}
 	// MarkInterrupted for ingest when status is parsing
 	_, _ = pool.Exec(ctx, `UPDATE documents SET status = 'parsing' WHERE id = $1::uuid`, db.MustUUID(docID))

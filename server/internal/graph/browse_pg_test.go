@@ -175,6 +175,7 @@ func TestGraphExtractBrowseNodeEdgeSupplementAndCleanupPG(t *testing.T) {
 	doc1 := uuid.NewString()
 	doc2 := uuid.NewString()
 	tagID := uuid.NewString()
+	parentID := uuid.NewString()
 	chunk1 := uuid.NewString()
 	chunk2 := uuid.NewString()
 	jobID := uuid.NewString()
@@ -197,7 +198,7 @@ func TestGraphExtractBrowseNodeEdgeSupplementAndCleanupPG(t *testing.T) {
 		payload := map[string]any{
 			"choices": []map[string]any{{
 				"message": map[string]any{
-					"content": `{"entities":[{"type":"method","name":"LoRA","alias":"c1"}],"relations":[{"type":"proposes","source":"PAPER","target":"LoRA","alias":"c1","sentence":"提出方法 LoRA"},{"type":"cites","source":"PAPER","target":"Cited Paper Y","alias":"c1","sentence":"引用 Cited Paper Y"},{"type":"cites","source":"PAPER","target":"Missing Paper Z","alias":"c1","sentence":"引用 Missing Paper Z"}]}`,
+					"content": `{"entities":[{"type":"method","name":"LoRA","chunk_alias":"c1"}],"relations":[{"type":"proposes","source":"PAPER","target":"LoRA","chunk_alias":"c1","sentence":"提出方法 LoRA"},{"type":"cites","source":"PAPER","target":"Cited Paper Y","chunk_alias":"c1","sentence":"引用 Cited Paper Y"},{"type":"cites","source":"PAPER","target":"Missing Paper Z","chunk_alias":"c1","sentence":"引用 Cited Paper Y 与 Missing Paper Z"}]}`,
 				},
 			}},
 			"usage": map[string]int{"prompt_tokens": 10, "completion_tokens": 20},
@@ -216,10 +217,14 @@ func TestGraphExtractBrowseNodeEdgeSupplementAndCleanupPG(t *testing.T) {
 		doc1, owner, kbID, doc2)
 	mustExec(t, pool, `INSERT INTO document_tags (document_id, tag_id) VALUES ($1::uuid, $2::uuid)`, doc1, tagID)
 	mustExec(t, pool, `
-		INSERT INTO chunks (id, document_id, kind, page_start, paragraph_index, overlap_prefix, text, version_no, char_count, term_count, embedding_generation, created_at, updated_at)
-		VALUES ($1::uuid, $2::uuid, 'paragraph', 6, 0, '', '提出方法 LoRA，引用 Cited Paper Y 与 Missing Paper Z。', 1, 32, 8, 1, now(), now()),
-		       ($3::uuid, $2::uuid, 'paragraph', 7, 1, '', '补充切块：LoRA 在数据集上表现优异。', 1, 20, 6, 1, now(), now())`,
-		chunk1, doc1, chunk2)
+		INSERT INTO parent_chunks (id, document_id, position, page_start, text)
+		VALUES ($1::uuid, $2::uuid, 0, 6, '提出方法 LoRA，引用 Cited Paper Y 与 Missing Paper Z。')`,
+		parentID, doc1)
+	mustExec(t, pool, `
+		INSERT INTO chunks (id, document_id, parent_id, kind, page_start, paragraph_index, overlap_prefix, text, version_no, char_count, term_count, embedding_generation, created_at, updated_at)
+		VALUES ($1::uuid, $2::uuid, $3::uuid, 'paragraph', 6, 0, 0, '提出方法 LoRA，引用 Cited Paper Y 与 Missing Paper Z。', 1, 32, 8, 1, now(), now()),
+		       ($4::uuid, $2::uuid, $3::uuid, 'paragraph', 7, 1, 0, '补充切块：LoRA 在数据集上表现优异。', 1, 20, 6, 1, now(), now())`,
+		chunk1, doc1, parentID, chunk2)
 	mustExec(t, pool, `
 		INSERT INTO jobs (id, kind, owner_id, target_id, request_id, priority, attempt, status, created_at)
 		VALUES ($1::uuid, 'graph_extract', $2::uuid, $3::uuid, $4::uuid, 80, 1, 'running', now())`,

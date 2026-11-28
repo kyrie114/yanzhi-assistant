@@ -205,22 +205,29 @@ func Loop(ctx context.Context, pool *pgxpool.Pool, kinds []string, handle func(c
 			continue
 		}
 		func() {
+			finishCtx := func() (context.Context, context.CancelFunc) {
+				return context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			}
 			defer func() {
 				if rec := recover(); rec != nil {
-					_ = Fail(ctx, pool, job.ID, apperr.MsgInterrupted)
-					MarkInterrupted(ctx, pool, job.TargetID, job.Kind)
+					c, done := finishCtx()
+					defer done()
+					_ = Fail(c, pool, job.ID, apperr.MsgInterrupted)
+					MarkInterrupted(c, pool, job.TargetID, job.Kind)
 				}
 			}()
 			err := handle(ctx, *job)
+			c, done := finishCtx()
+			defer done()
 			if errors.Is(err, ErrCancelled) {
-				_ = Cancel(ctx, pool, job.ID)
+				_ = Cancel(c, pool, job.ID)
 				return
 			}
 			if err != nil {
-				_ = Fail(ctx, pool, job.ID, err.Error())
+				_ = Fail(c, pool, job.ID, err.Error())
 				return
 			}
-			_ = Succeed(ctx, pool, job.ID)
+			_ = Succeed(c, pool, job.ID)
 		}()
 	}
 }
