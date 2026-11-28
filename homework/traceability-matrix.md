@@ -49,7 +49,7 @@
 | 29 | FR-26 | US-27 | AC-27-01, AC-27-02 | 可以 | 接口 | server/apikey_test.go | 待开发 |
 | 30 | FR-27 | US-28 | AC-28-01, AC-28-02 | 可以 | 接口 | server/sync_test.go | 待开发 |
 | 31 | FR-28 | US-29 | AC-29-01, AC-29-02 | 可以 | 接口 | server/preference_test.go | 待开发 |
-| 32 | FR-29 | US-30 | AC-30-01, AC-30-02, AC-30-03, AC-30-04, AC-30-05, AC-30-06, AC-30-07, AC-30-08 | 应该 | 接口、端到端 | server/reading_test.go | 待开发 |
+| 32 | FR-29 | US-30 | AC-30-01, AC-30-02, AC-30-03, AC-30-04, AC-30-05, AC-30-06, AC-30-07, AC-30-08 | 应该 | 接口、端到端 | `server/internal/reading/{reading_test.go,pg_store_test.go}`、`server/internal/httpapi/{reading_test.go,nfr_idor_matrix_test.go}`、`frontend/tests/reading.test.ts`、`frontend/e2e/layout-1366.spec.ts` | 已完成（Go 单测与 PG 集成、HTTP/IDOR、Vitest 与 live Compose 实测全绿） |
 
 ## 2 质量需求
 
@@ -59,13 +59,13 @@
 | NFR-02 | AC-06-07 | `server/cmd/perfseed`（5,000 切块）、`perf/k6/nfr02_qa_latency.js` 及流式探测 | 部分通过（5,000 切块检索 P50=161.23ms / P95=260.42ms ≤ 2000ms 已达标；首字 P50=528.8ms，因免费对话模型偶发 60s 排队致首字 P95=61.64s，`k6` 50 轮整轮结束 P95=6.85s、失败率 1.92%，待稳定付费接口复验首字 P95） |
 | NFR-03 | AC-03-01 | `perf/bench_ingest_10pdfs.py`（10 篇 20 页文本 PDF；CI 已跑 `--dry-run`） | 已完成（本机 Compose + `BAAI/bge-m3` 实测 10 篇全部「已完成」，最大耗时 0.547s ≤ 60s） |
 | NFR-04 | AC-02-04, AC-02-05, AC-02-06, AC-02-08 | `server/internal/httpapi/nfr_idor_matrix_test.go`（50MB 精确边界）、`knowledge_test.go`、`pdfcheck_test.go`、`frontend/tests/validate.test.ts` | 已完成（本地/CI 全绿） |
-| NFR-05 | AC-04-03, AC-05-05, AC-08-01, AC-08-02, AC-08-05, AC-10-04, AC-19-02, AC-30-06 | `server/internal/httpapi/nfr_idor_matrix_test.go`、`graph_test.go`、`suggest_mount_test.go`、`browse_pg_test.go` | 第一切片已完成（AC-19-02/AC-30-06 随第二切片开放） |
+| NFR-05 | AC-04-03, AC-05-05, AC-08-01, AC-08-02, AC-08-05, AC-10-04, AC-19-02, AC-30-06 | `server/internal/httpapi/nfr_idor_matrix_test.go`、`graph_test.go`、`suggest_mount_test.go`、`browse_pg_test.go`、`reading_test.go` | 第一切片与按页对照阅读（AC-30-06）已完成（AC-19-02 随其余第二切片功能开放） |
 | NFR-06 | AC-01-01, AC-01-06, AC-01-07, AC-08-03, AC-08-04, AC-09-02 | `cryptobox/aes_test.go`、`identity/service_pg_test.go`（同秒改密 `sv`）、`password_session_test.go`、`nfr_idor_matrix_test.go`（路径隔离）、`nginx.conf` | 已完成（本地/CI 全绿） |
 | NFR-07 | AC-06-05, AC-24-01, AC-24-03 | `platform/applog/logger_test.go`、`httpapi/nfr_security_log_test.go`（6 类哨兵零泄漏）、`request_logs` 与 `model_call_logs` 全路径落库 | 已完成（本地/CI 全绿） |
 | NFR-08 | AC-03-05, AC-03-06, AC-03-08, AC-07-06 | `jobs/jobs_pg_test.go`、`ingest/fault_test.go`、`graph/attempt_test.go`、`POST /api/v1/documents/{id}/retries` | 已完成（本地单测 + CI PG 故障注入全绿） |
 | NFR-09 | 无单独验收条目 | `.github/workflows/ci.yml`：6 核心 Go 包（`access`/`jobs`/`ingest`/`retrieval`/`graph`/`qa`）逐包 ≥ 70% + `docreader/parser` ≥ 70% | 已完成（CI 门禁生效；无 `TEST_DATABASE_URL` 时跳过 PG 测试） |
 | NFR-10 | AC-06-06, AC-07-01 | `eval/qa_eval.py`（`--mode mock` 与 `--mode live` 0.15–0.55 阈值扫描）、`eval/page_sampling_checklist.md`（6 类 × 5 处） | 部分完成（`--mode live` 9 档 180 轮实测零悬空出处/零误答/零报错，推荐阈值 0.35；仍待按 `eval/page_sampling_checklist.md` 人工抽检实景 PDF 页码签收） |
-| NFR-11 | 无单独验收条目 | `frontend/e2e/layout-1366.spec.ts`、`App.vue` 全简体中文状态；Playwright `layout-1366.spec.ts` 对实时 Compose 栈 9 页 1366×768 实测全绿（1.6s） | 第一切片核心界面已实测通过（对照阅读随第二切片补全） |
+| NFR-11 | 无单独验收条目 | `frontend/e2e/layout-1366.spec.ts`、`App.vue` 全简体中文状态；Playwright `layout-1366.spec.ts` 对实时 Compose 栈 1366×768 实测全绿（1.6s） | 第一切片核心界面与按页对照阅读页已实测通过 |
 | NFR-12 | 无单独验收条目 | `compose.yaml`、`README.md`、`.github/workflows/ci.yml` `compose-smoke` | 已完成 |
 
 ## 3 覆盖
